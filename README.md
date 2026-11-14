@@ -1,0 +1,77 @@
+# FreeCAD MCP (ClaudeLink)
+
+Lets Claude drive a live FreeCAD 1.0 session through MCP tools, with compact, token-frugal results.
+
+```
+Claude --stdio--> server/ (MCP, Python + uv) --127.0.0.1:47823 JSON-lines + token--> addon/ClaudeLink (inside FreeCAD)
+```
+
+## Install (done)
+- Addon: `%APPDATA%\FreeCAD\Mod\ClaudeLink` is a junction to `addon\ClaudeLink`; it starts with the FreeCAD GUI
+  (Report view shows `ClaudeLink 0.1.0 listening on 127.0.0.1:47823`).
+- MCP: `claude mcp add --scope user freecad -- uv run --directory <repo>\server freecad-mcp`
+- Token: `%APPDATA%\FreeCAD\ClaudeLink\token.txt` (created on first start; only local processes that can read it can connect).
+
+## Tools (Phase 1)
+| Tool | Purpose |
+|---|---|
+| `freecad_status` | version, open docs, namespace |
+| `freecad_exec` | run Python on FreeCAD's main thread; persistent namespace; returns change diff + trailing expression value; one undo step, rolled back on error |
+| `freecad_run_file` | run a file with `overrides` of top-level constants and a `then` snippet |
+| `freecad_tree` / `freecad_inspect` | compact model tree / one object in detail |
+| `freecad_view` | multi-view contact-sheet image; isolate/highlight; camera restored |
+| `freecad_doc` | new/open/save/saveas/close/activate/recompute |
+| `freecad_undo` | undo/redo with diff |
+| `freecad_console` | Report view tail |
+
+## Tools (Phase 2: measure & verify)
+| Tool | Purpose |
+|---|---|
+| `freecad_measure` | describe one ref, or distance/angle/plane separation/cylinder clearance between two |
+| `freecad_section` | plane cut: areas, extents, in-plane gaps & overlaps, 2D drawing with mm grid; `region` zooms |
+| `freecad_check_geometry` | validity, OCC/BOP check, open shells, tolerances, tiny edges/faces |
+| `freecad_fit` | pairwise interference volume / contact / min gap, worst first |
+| `freecad_wall_thickness` | ray-cast thickness stats and thin-spot locations (mesh tolerance reported) |
+| `freecad_printability` | bed fit, contact area, overhang regions, too-thin walls for a given `up` |
+
+Refs: `Obj` or `Obj:<selector>`; selectors shared with `cl.sel` (see `cl.help()`), e.g.
+`Housing:faces %Cylinder r>29 [0]`, `Bezel:>Z`, `Plate:edges %Circle z=10`.
+
+`cl` helpers in the exec namespace: `sel/sel1/name_of`, `show` (replace in place), `place/placement`,
+`polygon/extrude/revolve/ring/polar/union/cut`, `fillet/chamfer` (per-edge fallback), `check`, `help`.
+
+## Tools (Phase 3: projects & output)
+| Tool | Purpose |
+|---|---|
+| `freecad_project_info` | project folder summary + every parameter (group, comment, effective value, override/sheet flags) |
+| `freecad_project_params` | persist values: `auto` (override JSON if the script reads it, else source), `override`, `source` (rewrite literal, keep comment), `none`; syncs the Params sheet; optional rebuild |
+| `freecad_project_rebuild` | run build script (`build(doc, export_dir)` / `build()`), temporary overrides, export/save/checks |
+| `freecad_project_new` | scaffold `~/Documents/<Name>` with the house-style build script, macro, folders, saved .FCStd |
+| `freecad_export` | stl/3mf/obj/amf/ply (tolerance) or step/iges/brep; default to project stl/ or step/; watertight report |
+| `freecad_compare_mesh` | two-way normal deviation CAD vs mesh/STL: stats, worst regions, missing/extra areas, deviation map |
+| `freecad_checkpoint` | save/list/restore(in place, one undo step)/open snapshots in FreeCAD's cache dir |
+
+Project = folder with `<Name>.FCStd` + `build_*.py` (top-level UPPERCASE literal constants before the
+first def are parameters; `# --- group ---` comment lines group them; `params_override.json` may override).
+
+## Tools (Phase 4: drafting & targets)
+| Tool | Purpose |
+|---|---|
+| `freecad_sketch` | solver result, DoF, conflicting/redundant/malformed constraints, open wires; geometry/constraint lists; sketch image |
+| `freecad_drawing` | TechDraw PDF+SVG: projection group, auto standard scale & layout, hidden lines, extent + diameter dims, title block; preview image; `keep=false` leaves no trace |
+| `freecad_target` | switch tools between the GUI and a windowless `freecadcmd` worker (started on demand, results tagged `[headless]`) |
+
+## Print profile
+`freecad_print_profile` keeps the printer (bed, nozzle, layer, slicer) and per-material radial fit
+clearances (press < snug < slide < loose), M3 insert / self-tap hole sizes and XY/Z scale in
+`%APPDATA%\FreeCAD\ClaudeLink\print_profile.json` (`CLAUDELINK_PROFILE` overrides the path, used by tests).
+Measure them with the `~/Documents/FitGauge` print (`record_gauge`). Used by `freecad_printability`
+defaults, fit-class labels in `freecad_fit` / `freecad_measure`, and `cl.fit()` / `cl.hole()` / `cl.profile()`.
+
+Workflow skill: `~/.claude/skills/freecad/SKILL.md` (loop, verification checklist, token discipline, house conventions).
+
+## Dev
+- Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
+- Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/mcp_roundtrip.py`.
+- `mcp` is pinned `<2` (2.x renamed FastMCP).
