@@ -22,10 +22,13 @@ windowless work, then switch back with `'gui'`).
      (use `region` to zoom) for the real clearances
    - critical dimensions: `freecad_measure` with selectors (`Obj:faces %Cylinder r>5 [0]`)
    - printed parts: `freecad_printability` (compare `up` orientations), `freecad_wall_thickness`
+   - loaded parts: `freecad_strength` (fixed faces + loads + print `up`; safety factor >= 3, check layer adhesion)
+   - moving parts: `freecad_motion` (hinge/slider travel; print-in-place clearance)
    - rebuilt from a reference mesh: `freecad_compare_mesh`
 5. One `freecad_view` (small size, 1–2 views) to confirm visually.
 6. Deliver: for printing, `freecad_orient` → `freecad_print_prep` (print copy + engineered snap-off supports),
-   then `freecad_export` the `_print` and `_print_supports` objects together; `freecad_drawing` for a
+   then `freecad_export` the `_print` and `_print_supports` objects together. Too big for the bed: `freecad_split`
+   (press-fit pins). Several colours: `freecad_color_split` (single-colour pieces, glue-free inlays/pins); `freecad_drawing` for a
    dimensioned PDF; `freecad_doc save`.
 
 ## Printed fits

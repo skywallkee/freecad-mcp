@@ -25,6 +25,9 @@ once to check visually -> fix -> save with freecad_doc.
   dimensions, freecad_printability before exporting parts to print.
 - Printing: freecad_orient to pick the orientation, freecad_print_prep for the print copy with
   teardrops, bottom chamfer and engineered snap-off supports; export <obj>_print + supports together.
+  freecad_strength for loaded parts (layer-aware FEM), freecad_split when a part is bigger than the
+  bed, freecad_color_split for single-colour pieces that assemble without glue, freecad_motion for
+  hinges/lids/sliders and print-in-place clearance.
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
   freecad_project_params / freecad_project_rebuild to change and rebuild, freecad_export for files.
   freecad_checkpoint save before risky multi-step changes.
@@ -351,6 +354,69 @@ async def freecad_print_prep(object: str, up: str = "auto", supports: bool = Tru
     return await _call("print_prep", 900, object=object, up=up, supports=supports, teardrops=teardrops,
                        chamfer=chamfer, max_overhang=max_overhang, max_bridge=max_bridge, spacing=spacing,
                        tabs=tabs, load=load, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_strength(object: str, fixed: list[str], loads: list[dict], up: str = "+z",
+                           material: str | None = None, mesh_size: float | None = None, image: bool = True,
+                           keep: bool = False, doc: str | None = None):
+    """Quick linear-static FEM check of a printed part (Gmsh + CalculiX, on a copy in a scratch doc).
+    fixed: face selectors held rigidly, e.g. ["%Cylinder r<2.6"] (bolt holes) or ["<Z"].
+    loads: [{"ref": selector, "force": N, "dir": "-z" | [x,y,z]}] - total force spread over the matched
+    faces. up: the PRINT direction in model coords (layer adhesion is checked across it).
+    Reports max von Mises vs in-layer strength, max tension ACROSS layers vs layer adhesion, deflection,
+    safety factors + verdict (aim >= 3 for prints), stress hot spots with their faces (thicken/fillet
+    there). Material from the print profile (typical PLA/PETG/ABS/ASA/PA/PC values; override with
+    material=...). Assumes solid material. image: von Mises colour plot (GUI only)."""
+    return _out(await _call("strength", 900, object=object, fixed=fixed, loads=loads, up=up, material=material,
+                            mesh_size=mesh_size, image=image, keep=keep, doc=doc))
+
+
+@mcp.tool()
+async def freecad_split(object: str, axis: str | None = None, positions: list[float] | None = None,
+                        joint: Literal["pin", "peg", "none"] = "pin",
+                        fit: Literal["press", "snug", "slide", "loose"] = "press", pin_d: float | None = None,
+                        margin: float = 5.0, bosses: bool = True, name: str | None = None,
+                        doc: str | None = None) -> str:
+    """Split a part that is too big for the print bed (profile bed minus margin) into pieces
+    <name>1..n, choosing cut planes with small, compact cross-sections (or give axis + positions).
+    Joints hold without glue: separate press-fit pins (<name>_pins, laid flat with a small flat so they
+    print support-free; holes in both halves) or integral pegs (joint='peg'), 2+ per interface, sized to
+    keep a 1.2 mm wall. Thin walls get small 45-deg bosses on the inside of the cut to carry a pin.
+    Clearance = profile fit class. The original is untouched."""
+    return await _call("split", 900, object=object, axis=axis, positions=positions, joint=joint, fit=fit,
+                       pin_d=pin_d, margin=margin, bosses=bosses, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_color_split(objects: list[str], colors: list | None = None,
+                              fit: Literal["press", "snug", "slide", "loose"] = "press",
+                              joint: Literal["pin", "peg"] = "pin", name: str | None = None,
+                              purge_g: float = 0.2, doc: str | None = None) -> str:
+    """One single-colour print per colour region instead of a multi-colour print. objects = colour
+    regions in priority order (base first, inlays/details last; later ones win where they overlap).
+    colors: names ('red', 'white', ...) or RGB per object (default: their view colours).
+    For each touching pair it finds the straight assembly direction, then: inlays/pockets get a
+    press-fit clearance (exact 2D offset for prism-like logos/text, else 3D offset) and hold by friction
+    (warns if engaged < 1.2 mm); flat stacked joints get press-fit pins. Reports pieces
+    <name>1_<colour>.., the assembly order, LOCKED pieces that can't be assembled, and the purge
+    filament a multi-colour print would waste (rough)."""
+    return await _call("color_split", 900, objects=objects, colors=colors, fit=fit, joint=joint, name=name,
+                       purge_g=purge_g, doc=doc)
+
+
+@mcp.tool()
+async def freecad_motion(moving: list[str] | str, fixed: list[str] | None = None, rotate: dict | None = None,
+                         translate: dict | None = None, steps: int = 36, show_worst: bool = True,
+                         doc: str | None = None) -> str:
+    """Clearance through a range of motion (hinge, lid, slider, print-in-place). Give one of
+    rotate={"axis_ref": "Base:faces %Cylinder r<4 [0]", "from": 0, "to": 110} (or "axis": "y",
+    "point": [x,y,z]) or translate={"dir": "x", "from": 0, "to": 20}. fixed defaults to all other
+    visible solids. Reports collision ranges with the worst interference (and a red ghost object of
+    that position), else the minimum clearance along the motion with its fit class and whether it is
+    safe to print in place (>= profile loose fit), plus a compact gap profile."""
+    return await _call("motion", 600, moving=moving, fixed=fixed, rotate=rotate, translate=translate, steps=steps,
+                       show_worst=show_worst, doc=doc)
 
 
 @mcp.tool()
