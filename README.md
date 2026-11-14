@@ -6,13 +6,27 @@ Lets Claude drive a live FreeCAD 1.0 session through MCP tools, with compact, to
 Claude --stdio--> server/ (MCP, Python + uv) --127.0.0.1:47823 JSON-lines + token--> addon/ClaudeLink (inside FreeCAD)
 ```
 
-## Install (done)
-- Addon: `%APPDATA%\FreeCAD\Mod\ClaudeLink` is a junction to `addon\ClaudeLink`; it starts with the FreeCAD GUI
-  (Report view shows `ClaudeLink 0.1.0 listening on 127.0.0.1:47823`).
-- MCP: `claude mcp add --scope user freecad -- uv run --directory <repo>\server freecad-mcp`
-- Token: `%APPDATA%\FreeCAD\ClaudeLink\token.txt` (created on first start; only local processes that can read it can connect).
+## Requirements
+- FreeCAD 1.0, [uv](https://docs.astral.sh/uv/), Claude Code (or any MCP client).
+- Tested on Windows. Other platforms need the paths in `server/src/freecad_mcp/client.py`
+  (FreeCAD config dir, `freecadcmd` location; `FREECADCMD` env var) adjusted.
 
-## Tools (Phase 1)
+## Install
+1. Clone this repo.
+2. Link the addon into FreeCAD's user Mod folder (Windows, no admin needed):
+   ```
+   mklink /J "%APPDATA%\FreeCAD\Mod\ClaudeLink" "<repo>\addon\ClaudeLink"
+   ```
+3. Start FreeCAD. The Report view shows `ClaudeLink 0.1.0 listening on 127.0.0.1:47823`.
+   A random token is created in `%APPDATA%\FreeCAD\ClaudeLink\token.txt`; only local processes that
+   can read it can connect.
+4. Register the MCP server:
+   ```
+   claude mcp add --scope user freecad -- uv run --directory <repo>\server freecad-mcp
+   ```
+5. Optional: copy `skills/freecad` to `~/.claude/skills/freecad` for the modelling workflow skill.
+
+## Tools: core
 | Tool | Purpose |
 |---|---|
 | `freecad_status` | version, open docs, namespace |
@@ -24,7 +38,7 @@ Claude --stdio--> server/ (MCP, Python + uv) --127.0.0.1:47823 JSON-lines + toke
 | `freecad_undo` | undo/redo with diff |
 | `freecad_console` | Report view tail |
 
-## Tools (Phase 2: measure & verify)
+## Tools: measure & verify
 | Tool | Purpose |
 |---|---|
 | `freecad_measure` | describe one ref, or distance/angle/plane separation/cylinder clearance between two |
@@ -40,7 +54,7 @@ Refs: `Obj` or `Obj:<selector>`; selectors shared with `cl.sel` (see `cl.help()`
 `cl` helpers in the exec namespace: `sel/sel1/name_of`, `show` (replace in place), `place/placement`,
 `polygon/extrude/revolve/ring/polar/union/cut`, `fillet/chamfer` (per-edge fallback), `check`, `help`.
 
-## Tools (Phase 3: projects & output)
+## Tools: projects & output
 | Tool | Purpose |
 |---|---|
 | `freecad_project_info` | project folder summary + every parameter (group, comment, effective value, override/sheet flags) |
@@ -54,7 +68,7 @@ Refs: `Obj` or `Obj:<selector>`; selectors shared with `cl.sel` (see `cl.help()`
 Project = folder with `<Name>.FCStd` + `build_*.py` (top-level UPPERCASE literal constants before the
 first def are parameters; `# --- group ---` comment lines group them; `params_override.json` may override).
 
-## Tools (Phase 4: drafting & targets)
+## Tools: drafting & targets
 | Tool | Purpose |
 |---|---|
 | `freecad_sketch` | solver result, DoF, conflicting/redundant/malformed constraints, open wires; geometry/constraint lists; sketch image |
@@ -65,13 +79,16 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 `freecad_print_profile` keeps the printer (bed, nozzle, layer, slicer) and per-material radial fit
 clearances (press < snug < slide < loose), M3 insert / self-tap hole sizes and XY/Z scale in
 `%APPDATA%\FreeCAD\ClaudeLink\print_profile.json` (`CLAUDELINK_PROFILE` overrides the path, used by tests).
-Measure them with the `~/Documents/FitGauge` print (`record_gauge`). Used by `freecad_printability`
+Measure them with the FitGauge print in `examples/fit_gauge` (`record_gauge`). Used by `freecad_printability`
 defaults, fit-class labels in `freecad_fit` / `freecad_measure`, and `cl.fit()` / `cl.hole()` / `cl.profile()`.
 
-Workflow skill: `~/.claude/skills/freecad/SKILL.md` (loop, verification checklist, token discipline, house conventions).
+Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token discipline, project conventions).
 
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
 - Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/mcp_roundtrip.py`.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
+
+## License
+MIT, see `LICENSE`.
