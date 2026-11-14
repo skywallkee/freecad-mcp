@@ -75,6 +75,19 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 | `freecad_drawing` | TechDraw PDF+SVG: projection group, auto standard scale & layout, hidden lines, extent + diameter dims, title block; preview image; `keep=false` leaves no trace |
 | `freecad_target` | switch tools between the GUI and a windowless `freecadcmd` worker (started on demand, results tagged `[headless]`) |
 
+## Tools: printing
+| Tool | Purpose |
+|---|---|
+| `freecad_orient` | rank orientations (6 axes + lie flat on the largest planar faces) by support volume, height, bed contact, bed fit and optional load direction across layers |
+| `freecad_print_prep` | non-destructive `<obj>_print` copy: oriented, on the bed, teardrop horizontal holes, bed-edge chamfer; plus engineered snap-off supports `<obj>_print_supports` |
+
+Engineered supports go only under overhangs that need them (anchored flat spans up to `max_bridge`
+bridge instead). Each support is a thin vertical wall designed in its own plane: the part's section
+(at the wall's centre and both faces) is grown by one layer with a robust 2D offset and subtracted, so
+the walls touch the part only as lines with a one-layer gap. Walls run in a grid (`spacing`), get small
+grip fins at bed level, and every piece is distance-checked; anything closer than half the gap is left
+out and reported.
+
 ## Print profile
 `freecad_print_profile` keeps the printer (bed, nozzle, layer, slicer) and per-material radial fit
 clearances (press < snug < slide < loose), M3 insert / self-tap hole sizes and XY/Z scale in
@@ -87,7 +100,7 @@ Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token d
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/mcp_roundtrip.py`.
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/mcp_roundtrip.py`.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License

@@ -24,7 +24,9 @@ windowless work, then switch back with `'gui'`).
    - printed parts: `freecad_printability` (compare `up` orientations), `freecad_wall_thickness`
    - rebuilt from a reference mesh: `freecad_compare_mesh`
 5. One `freecad_view` (small size, 1–2 views) to confirm visually.
-6. Deliver: `freecad_export` (STL/3MF/STEP), `freecad_drawing` for a dimensioned PDF, `freecad_doc save`.
+6. Deliver: for printing, `freecad_orient` → `freecad_print_prep` (print copy + engineered snap-off supports),
+   then `freecad_export` the `_print` and `_print_supports` objects together; `freecad_drawing` for a
+   dimensioned PDF; `freecad_doc save`.
 
 ## Printed fits
 - Clearances come from the print profile: `freecad_print_profile` (show) and `cl.fit('press'|'snug'|'slide'|'loose')`,

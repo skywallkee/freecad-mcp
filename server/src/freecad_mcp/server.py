@@ -23,6 +23,8 @@ once to check visually -> fix -> save with freecad_doc.
 - Verify, don't eyeball: freecad_check_geometry after booleans, freecad_fit for assemblies,
   freecad_section through mating features for real clearances, freecad_measure for critical
   dimensions, freecad_printability before exporting parts to print.
+- Printing: freecad_orient to pick the orientation, freecad_print_prep for the print copy with
+  teardrops, bottom chamfer and engineered snap-off supports; export <obj>_print + supports together.
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
   freecad_project_params / freecad_project_rebuild to change and rebuild, freecad_export for files.
   freecad_checkpoint save before risky multi-step changes.
@@ -319,6 +321,36 @@ async def freecad_drawing(objects: list[str], views: list[str] | None = None, te
     preview image. GUI only."""
     return _out(await _call("drawing", 300, objects=objects, views=views, template=template, scale=scale,
                             hidden=hidden, dims=dims, title=title, path=path, keep=keep, preview=preview, doc=doc))
+
+
+@mcp.tool()
+async def freecad_orient(object: str, max_overhang: float = 50.0, max_bridge: float = 10.0,
+                         load: list[float] | str | None = None, top: int = 5, doc: str | None = None) -> str:
+    """Rank FDM print orientations for a solid: the six axes plus lying flat on each large planar face.
+    Scores support volume (overhangs steeper than max_overhang from vertical, minus flat spans
+    <= max_bridge that can bridge), print height, bed contact and bed fit (print profile), and with
+    `load` (model direction, e.g. [0,0,1] or "+x") how much of it pulls across the weak layer lines.
+    Returns a ranked table and the best `up` for freecad_print_prep."""
+    return await _call("orient", 300, object=object, max_overhang=max_overhang, max_bridge=max_bridge,
+                       load=load, top=top, doc=doc)
+
+
+@mcp.tool()
+async def freecad_print_prep(object: str, up: str = "auto", supports: bool = True, teardrops: bool = True,
+                             chamfer: float | None = None, max_overhang: float = 50.0, max_bridge: float = 10.0,
+                             spacing: float = 3.0, tabs: bool = True, load: list[float] | str | None = None,
+                             name: str | None = None, doc: str | None = None) -> str:
+    """Make a print-ready copy of a solid (<name>_print; the original is untouched): rotated so `up`
+    (auto = best from freecad_orient, or +z/-x/'x,y,z') points up, placed on the bed, horizontal holes
+    turned into teardrops, bed edges chamfered (default = nozzle, against elephant's foot). With
+    supports=true also builds engineered snap-off supports (<name>_print_supports): only under
+    overhangs that need them (flat spans <= max_bridge anchored on 2 sides bridge instead), grid walls
+    2 lines thick every `spacing` mm for line contact, a one-layer vertical gap and nozzle-wide side
+    gap from the part (print profile), and a grip tab on bed-standing islands. Verifies no overlap and
+    reports gaps, volume and mass. Export both together for printing."""
+    return await _call("print_prep", 900, object=object, up=up, supports=supports, teardrops=teardrops,
+                       chamfer=chamfer, max_overhang=max_overhang, max_bridge=max_bridge, spacing=spacing,
+                       tabs=tabs, load=load, name=name, doc=doc)
 
 
 @mcp.tool()
