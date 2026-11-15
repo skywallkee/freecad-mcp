@@ -110,6 +110,11 @@ try:
          project=pdir, variants={"S": {"WIDTH": 30}, "M": {"WIDTH": 45}, "L": {"WIDTH": 60}})
     step("files per variant", "exec", ["[1, 1, 1]"], code="import os; [len(os.listdir(os.path.join(%r, 'stl', v))) for v in ('s', 'm', 'l')]" % pdir)
     step("unknown parameter refused", "variants", ["unknown parameter"], project=pdir, variants={"X": {"NOPE": 1}})
+    # --- render (pure numpy, works headless)
+    png = os.path.join(TMP, "render.png").replace(chr(92), "/")
+    step("render the enclosure", "render", ["rendered", "shadows, AO", "render.png"], objects=["Pi_base", "Pi_lid"], doc="DS",
+         size=300, out=png, image=False)
+    step("PNG written", "exec", ["True"], code="open(%r, 'rb').read(8) == bytes([137, 80, 78, 71, 13, 10, 26, 10])" % png)
     print("FAILS: %d" % fails)
 finally:
     proc.kill()

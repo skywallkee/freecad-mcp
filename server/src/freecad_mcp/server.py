@@ -36,6 +36,7 @@ once to check visually -> fix -> save with freecad_doc.
 - Standard parts / enclosures: freecad_stdpart (bearings, magnets, servos, boards; seats), freecad_enclosure.
 - Downloaded/scanned meshes: freecad_mesh_import (repair, find holes/flats, convert to solid).
 - Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
+- Presentation images: freecad_render (shadows, AO; headless too).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
@@ -611,6 +612,22 @@ async def freecad_variants(variants: dict, project: str | None = None, objects: 
     is rebuilt with its original values afterwards (nothing is saved)."""
     return await _call("variants", 1800, project=project, variants=variants, objects=objects, format=format,
                        check=check, up=up)
+
+
+@mcp.tool()
+async def freecad_render(objects: list[str] | None = None, view: str = "iso", size: int = 700, aspect: float = 1.33,
+                         shadows: bool = True, ao: bool = True, edges: bool = False, colors: dict | None = None,
+                         background: Literal["studio", "white"] = "studio", out: str | None = None,
+                         quality: Literal["normal", "high"] = "normal", image: bool = True,
+                         doc: str | None = None):
+    """Presentation render (no external renderer needed, works headless): soft key/fill/rim light, plastic
+    material, cast shadows on a ground plane, ambient occlusion, 2x anti-aliasing. objects default = visible
+    solids, display colours (palette if all default; colors={obj: [r,g,b]} overrides). view as freecad_illustrate
+    (iso, iso_left, iso_back, front, top, dir:x,y,z). Saves PNG to <project>/images (or out); returns it.
+    For exploded shots, move the parts first (or use freecad_illustrate steps)."""
+    return _out(await _call("render", 600, objects=objects, view=view, size=size, aspect=aspect, shadows=shadows,
+                            ao=ao, edges=edges, colors=colors, background=background, out=out, quality=quality,
+                            image=image, doc=doc))
 
 
 @mcp.tool()

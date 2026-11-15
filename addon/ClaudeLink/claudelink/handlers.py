@@ -783,6 +783,7 @@ from . import lighten as _lighten  # noqa: E402
 from . import stdparts as _stdparts  # noqa: E402
 from . import meshimport as _meshimport  # noqa: E402
 from . import variants as _variants  # noqa: E402
+from . import render as _render  # noqa: E402
 
 METHODS.update(_analysis.METHODS)
 METHODS.update(_project.METHODS)
@@ -799,3 +800,4 @@ METHODS.update(_lighten.METHODS)
 METHODS.update(_stdparts.METHODS)
 METHODS.update(_meshimport.METHODS)
 METHODS.update(_variants.METHODS)
+METHODS.update(_render.METHODS)
