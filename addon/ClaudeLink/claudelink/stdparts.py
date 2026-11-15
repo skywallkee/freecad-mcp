@@ -169,10 +169,9 @@ def stdpart(kind, size=None, at=(0, 0, 0), axis="z", mode="part", target=None, f
             s, desc = board_shape(key), "board %s (simplified, connectors as blocks)" % key
         s = place(s, at, axis) if k != "board" else s.translated(V(*at))
         o = cl.show(s, name or ("Std_" + re.sub(r"\W", "_", "%s_%s" % (k, key if isinstance(key, str) else "x".join(_f(v) for v in key)))), doc=d)
-        if FreeCAD.GuiUp:
+        if True:
             try:
-                o.ViewObject.ShapeColor = (0.75, 0.75, 0.78)
-                o.ViewObject.Transparency = 40
+                cl.paint(o, (0.75, 0.75, 0.78), 40)
             except Exception:
                 pass
         out.append("%s: %s at %s - reference only, not for printing" % (o.Name, desc, at))
@@ -373,16 +372,15 @@ def enclosure(board=None, size=None, wall=2.0, floor=2.0, clearance=1.5, standof
         bs.translate(V(ox, oy, oz))
         og = cl.show(bs, name + "_board", doc=d)
         objs.append(og.Name)
-        if FreeCAD.GuiUp:
+        if True:
             try:
-                og.ViewObject.ShapeColor = (0.1, 0.55, 0.25)
-                og.ViewObject.Transparency = 30
+                cl.paint(og, (0.1, 0.55, 0.25), 30)
             except Exception:
                 pass
-    if FreeCAD.GuiUp:
+    if True:
         try:
-            ob.ViewObject.ShapeColor = (0.22, 0.47, 0.85)
-            ol.ViewObject.ShapeColor = (0.96, 0.56, 0.12)
+            cl.paint(ob, (0.22, 0.47, 0.85))
+            cl.paint(ol, (0.96, 0.56, 0.12))
         except Exception:
             pass
     # fit checks

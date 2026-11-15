@@ -46,7 +46,7 @@ try:
     step("run_file overrides", "run_file", "=> 24", path=tmp, overrides={"W": 4, "B": 3, "ZZ": 1},
          then="build(App.ActiveDocument)\nW*A*B")
     step("undo", "undo", "undid 1", steps=1)
-    step("view headless refuses", "view", "needs the FreeCAD GUI")
+    step("view renders without a window", "view", "windowless render", size=160, views=["iso"])
     step("close unsaved", "doc", "closed", action="close", force=True)
     print("FAILS:", fails)
 finally:

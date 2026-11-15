@@ -20,6 +20,11 @@ def start(port=None, headless=False):
                                      "another FreeCAD probably has it\n" % (port, e))
         return None
     FreeCAD._claudelink_srv = srv
+    if not headless:
+        try:
+            handlers.install_open_hook()
+        except Exception:
+            pass
     FreeCAD.Console.PrintMessage("ClaudeLink %s listening on 127.0.0.1:%d\n" % (VERSION, port))
     return srv
 

@@ -575,11 +575,11 @@ def split(object, axis=None, positions=None, joint="pin", fit="press", pin_d=Non
     elif joint != "none":
         lines.append("joints: none placed")
     lines += ["note: " + n for n in notes]
-    if FreeCAD.GuiUp:
+    if cl.color_of(o) is not None:
         try:
-            col = o.ViewObject.ShapeColor
+            col = cl.color_of(o)
             for nm in shown:
-                d.getObject(nm).ViewObject.ShapeColor = col
+                cl.paint(d.getObject(nm), col)
         except Exception:
             pass
     d.recompute()
@@ -730,11 +730,8 @@ def color_split(objects, colors=None, fit="press", joint="pin", doc=None, name=N
         c = None
         if colors and i < len(colors) and colors[i]:
             c = _COLOURS.get(str(colors[i]).lower()) if isinstance(colors[i], str) else tuple(colors[i])
-        elif FreeCAD.GuiUp:
-            try:
-                c = tuple(o.ViewObject.ShapeColor[:3])
-            except Exception:
-                c = None
+        else:
+            c = cl.color_of(o)
         rgb.append(c)
     # 1. resolve overlaps: later regions win
     pieces = []
@@ -844,9 +841,9 @@ def color_split(objects, colors=None, fit="press", joint="pin", doc=None, name=N
         nm = "%s%d%s" % (base, i + 1, ("_" + cname) if cname else "")
         po = cl.show(pc, nm, doc=d)
         shown.append(po.Name)
-        if FreeCAD.GuiUp and rgb[i] is not None:
+        if rgb[i] is not None:
             try:
-                po.ViewObject.ShapeColor = rgb[i]
+                cl.paint(po, rgb[i])
             except Exception:
                 pass
         lines.append("  %s (from %s%s): %s, %s cm3%s" % (

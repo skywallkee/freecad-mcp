@@ -2,8 +2,8 @@
 
 ## FreeCAD not reachable
 `freecad_status` fails: ask the user to start FreeCAD (the ClaudeLink addon starts with it and logs
-"listening on 127.0.0.1:47823"). For batch work without a window: `freecad_target('headless')`; image tools
-(view, illustrate, strength images) need the GUI. Never kill or relaunch the user's FreeCAD.
+"listening on 127.0.0.1:47823"). Windowless work (the default) does not need it; only `freecad_show`,
+`freecad_illustrate`, `freecad_drawing` and strength colour plots use the window. Never kill or relaunch the user's FreeCAD.
 
 ## A tool changed the wrong thing
 Tools that modify objects saved a checkpoint first: `freecad_checkpoint action=list`, then `restore name=<n>`.
@@ -36,7 +36,13 @@ filter (`faces z=6`), a type filter (`%Plane`) or `near(x,y,z)` plus an index.
 - Fits feel tight/loose in reality: the profile is a guess until the FitGauge is printed and recorded.
 
 ## A call timed out with "the job is still running in FreeCAD"
-The job keeps the user's FreeCAD window busy and later calls queue behind it. Call `freecad_cancel` - it
-interrupts the job from outside (it stops at its next Python step; a single long geometry-kernel call has to
-finish first). Then find a cheaper way: fewer faces, `freecad_target('headless')` for heavy or untried geometry,
-or a simplified copy (a strength simulation of a threaded part: build it with a plain hole/rod instead).
+A call that overruns its timeout is interrupted automatically ("was interrupted and FreeCAD is free again").
+If the message says the job is inside one long geometry-kernel call, it stops when that call returns;
+`freecad_cancel` repeats the interrupt. Then find a cheaper way: fewer faces, a simplified copy, a longer
+timeout only if the step is known to be slow. Threads are handled for you in `freecad_strength` (simulated as
+plain cylinders) and in the print checks (upright thread flanks need no support).
+
+## The window shows an old or grey model
+The windowless worker and the window are separate FreeCAD instances. `freecad_show` saves and reloads the file
+in the window (it refuses if the window has unsaved changes to that file - ask before `force=true`). Colours set
+windowless are remembered on the objects and applied when the file opens in the window.

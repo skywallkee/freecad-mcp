@@ -314,6 +314,149 @@ def _override_ast(tree, overrides):
     return applied
 
 
+def _paint_parts(ns):
+    """Windowless: build scripts colour their parts only when a window exists. Remember the colours of the
+    usual PARTS = [(name, function, (r, g, b)), ...] table so they show when the document is opened."""
+    if FreeCAD.GuiUp or FreeCAD.ActiveDocument is None:
+        return
+    try:
+        from . import cl
+        for row in ns.get("PARTS") or []:
+            if len(row) >= 3 and isinstance(row[0], str) and len(row[2]) >= 3:
+                o = FreeCAD.ActiveDocument.getObject(row[0])
+                if o is not None:
+                    cl.paint(o, tuple(float(c) for c in row[2][:3]))
+    except Exception:
+        pass
+
+
+def handoff(doc=None):
+    """Windowless side of 'show in the window': write a copy of the document where the window can open it."""
+    d = _doc(doc)
+    folder = os.path.join(FreeCAD.getUserAppDataDir(), "ClaudeLink", "handoff")
+    os.makedirs(folder, exist_ok=True)
+    copy = os.path.join(folder, d.Name + ".FCStd")
+    d.recompute()
+    from . import cl
+    cl.remember_view(d)
+    d.saveCopy(copy)
+    return {"copy": copy, "name": d.Name, "file": d.FileName or "", "objects": len(d.Objects),
+            "modified": bool(_modified(d))}
+
+
+def handoff_all():
+    """Windowless side: recovery copies of every open document (called before the worker is stopped)."""
+    out = []
+    for d in FreeCAD.listDocuments().values():
+        try:
+            if d.Objects:
+                out.append(handoff(d.Name)["copy"])
+        except Exception:
+            pass
+    return out
+
+
+class _OpenObserver(object):
+    """Window side: a file saved windowless has no view data, so it opens all grey. Give it the remembered colours."""
+
+    def slotFinishRestoreDocument(self, doc):
+        try:
+            from PySide import QtCore
+            name = doc.Name
+            QtCore.QTimer.singleShot(500, lambda: _colour_restored(name))
+        except Exception:
+            pass
+
+
+def _colour_restored(name):
+    try:
+        from . import cl
+        d = FreeCAD.listDocuments().get(name)
+        if d is not None and d.FileName and not _has_gui_data(d.FileName):
+            if cl.apply_remembered(d):
+                _fit_all(d)
+    except Exception:
+        pass
+
+
+def install_open_hook():
+    if not FreeCAD.GuiUp:
+        return
+    old = getattr(FreeCAD, "_claudelink_obs", None)
+    try:
+        if old is not None:
+            FreeCAD.removeDocumentObserver(old)
+    except Exception:
+        pass
+    obs = _OpenObserver()
+    FreeCAD.addDocumentObserver(obs)
+    FreeCAD._claudelink_obs = obs
+
+
+def _has_gui_data(path):
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            return "GuiDocument.xml" in z.namelist()
+    except Exception:
+        return True
+
+
+def _fit_all(d):
+    G = _gui()
+    try:
+        for v in G.getDocument(d.Name).mdiViewsOfType("Gui::View3DInventor"):
+            v.viewIsometric()
+            v.fitAll()
+    except Exception:
+        pass
+
+
+def gui_open(path, preview=False, force=False, activate=True):
+    """Window side: open (or reload) a document file and give it the colours remembered while working windowless.
+    preview=True opens a hand-off copy next to the user's documents and never touches their files."""
+    G = _gui()
+    if not G:
+        raise UserError("gui_open needs the FreeCAD window")
+    from . import cl
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise UserError("file not found: %s" % p)
+    prev = FreeCAD.ActiveDocument.Name if FreeCAD.ActiveDocument else None
+    note = ""
+    for d in list(FreeCAD.listDocuments().values()):
+        if d.FileName and os.path.normcase(os.path.abspath(d.FileName)) == os.path.normcase(p):
+            if _modified(d) and not force and not preview:
+                raise UserError("%s is open in the window with unsaved changes - save or close it there first, or "
+                                "pass force=true to discard them and load the windowless result" % d.Name)
+            FreeCAD.closeDocument(d.Name)
+            note = " (reloaded)"
+            break
+    fresh = not _has_gui_data(p)
+    d = FreeCAD.openDocument(p)
+    d.UndoMode = 1
+    n = cl.apply_remembered(d) if (fresh or preview) else 0
+    if fresh or preview:
+        _fit_all(d)
+    if not activate and prev and prev in FreeCAD.listDocuments():
+        FreeCAD.setActiveDocument(prev)
+    G.updateGui()
+    return {"name": d.Name, "text": "%s open in the FreeCAD window%s: %d objects%s" % (
+        d.Name, note, len(d.Objects), (", view restored for %d" % n) if n else "")}
+
+
+def gui_close(name):
+    """Window side: close a hand-off preview again (only documents opened from the hand-off folder)."""
+    d = FreeCAD.listDocuments().get(name)
+    if d is None:
+        return "not open"
+    folder = os.path.normcase(os.path.join(FreeCAD.getUserAppDataDir(), "ClaudeLink", "handoff"))
+    if not os.path.normcase(os.path.abspath(d.FileName or "")).startswith(folder):
+        raise UserError("%s is not a windowless preview" % name)
+    FreeCAD.closeDocument(name)
+    return "closed preview %s" % name
+
+
 def run_file(path, overrides=None, then=None, shared=False, transaction=True,
              rollback_on_error=True, max_output=4000, recompute=False, module_name="__main__"):
     path = os.path.abspath(os.path.expanduser(path))
@@ -349,11 +492,13 @@ def run_file(path, overrides=None, then=None, shared=False, transaction=True,
         mod = types.ModuleType(os.path.splitext(os.path.basename(path))[0])
         mod.__dict__.update(ns)
         base["last_run"] = mod
+        res = None
         if then:
             exec(compile(ttree, then_file, "exec"), ns)
             if tlast is not None:
-                return eval(compile(tlast, then_file, "eval"), ns)
-        return None
+                res = eval(compile(tlast, then_file, "eval"), ns)
+        _paint_parts(ns)
+        return res
 
     extra = []
     if overrides:
@@ -552,6 +697,8 @@ def doc(action="list", name=None, path=None, force=False):
     if action == "save":
         if not d.FileName:
             raise UserError("%s has never been saved; use action=saveas with path" % d.Name)
+        from . import cl
+        cl.remember_view(d)
         d.save()
         return "saved %s" % d.FileName
     if action == "saveas":
@@ -560,6 +707,8 @@ def doc(action="list", name=None, path=None, force=False):
         p = os.path.abspath(os.path.expanduser(path))
         if os.path.exists(p) and not force:
             raise UserError("%s exists; pass force=true to overwrite" % p)
+        from . import cl
+        cl.remember_view(d)
         d.saveAs(p)
         return "saved %s as %s" % (d.Name, p)
     if action == "close":
@@ -650,7 +799,8 @@ def view(doc=None, views=None, size=380, objects=None, highlight=None, backgroun
          fit=True, format="png", quality=85, ortho=True):
     G = _gui()
     if not G:
-        raise UserError("view needs the FreeCAD GUI (this is a headless instance)")
+        from .render import sheet
+        return sheet(doc=doc, views=views, size=size, objects=objects, highlight=highlight)
     from PySide import QtCore, QtGui
     d = _doc(doc)
     gd = G.getDocument(d.Name)
@@ -754,6 +904,10 @@ def view(doc=None, views=None, size=380, objects=None, highlight=None, backgroun
 
 
 METHODS = {
+    "handoff": handoff,
+    "handoff_all": handoff_all,
+    "gui_open": gui_open,
+    "gui_close": gui_close,
     "status": status,
     "exec": exec_code,
     "run_file": run_file,

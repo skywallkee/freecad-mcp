@@ -2,7 +2,6 @@
 
 All analysis runs on a print copy; the original object is never modified."""
 import math
-import random
 import time
 
 import FreeCAD
@@ -85,6 +84,10 @@ def _score(mesh_pts, tris, facet_list, up, prof, thr, max_bridge, load, shape=No
     layer = prof["layer"]
     lim = -math.sin(math.radians(thr))
     bed_area, over = 0.0, []
+    on_thread = None
+    if shape is not None:
+        from . import threads
+        on_thread = threads.upright_tester(shape, up)      # flanks of an upright thread carry themselves
     for f in facet_list:
         i, _, n, area, _, idx = f
         nz = R.multVec(n).z
@@ -94,6 +97,8 @@ def _score(mesh_pts, tris, facet_list, up, prof, thr, max_bridge, load, shape=No
             continue
         cz = sum(zs) / 3.0
         if nz < lim and cz > zmin + layer:
+            if on_thread is not None and on_thread(f[1]):
+                continue
             over.append((f, nz, cz))
     # flat ceilings: decided on the B-rep (anchored bridges); everything steeper from the mesh
     support_area = support_vol = 0.0
@@ -330,9 +335,18 @@ def _steep_regions(part, thr, max_bridge, min_area, layer):
     lim = -math.sin(math.radians(thr))
     prisms, skipped_bridges, mixed = [], 0, []
     zbig = part.BoundBox.ZMax + 10
+    from . import threads
+    on_thread = threads.upright_tester(part, V(0, 0, 1))
     for f in part.Faces:
         if f.BoundBox.ZMax < layer + 1e-6:  # on or just above the bed
             continue
+        if on_thread is not None and not isinstance(f.Surface, (Part.Plane, Part.Cylinder)):
+            try:
+                u0, u1, v0, v1 = f.ParameterRange
+                if on_thread(f.valueAt((u0 + u1) / 2, (v0 + v1) / 2)):
+                    continue                # flank of an upright thread: prints without support
+            except Exception:
+                pass
         if isinstance(f.Surface, Part.Plane):
             n = cl._normal(f)
             if n is None or n.z >= lim or f.Area < min_area:
@@ -592,11 +606,8 @@ def print_prep(object, up="auto", doc=None, chamfer=None, teardrops=True, suppor
         if ck:
             lines.append(ck)
     po = cl.show(p, base, doc=d)
-    if FreeCAD.GuiUp:
-        try:
-            po.ViewObject.ShapeColor = o.ViewObject.ShapeColor
-        except Exception:
-            pass
+    if cl.color_of(o) is not None:
+        cl.paint(po, cl.color_of(o))
     lines.append("print copy: %s (original %s untouched), size %s" % (
         po.Name, o.Name, "x".join(fmt(round(v, 2)) for v in (p.BoundBox.XLength, p.BoundBox.YLength, p.BoundBox.ZLength))))
     old_sup = d.getObject(base + "_supports")
@@ -614,8 +625,7 @@ def print_prep(object, up="auto", doc=None, chamfer=None, teardrops=True, suppor
                     " (%d flat span(s) <= %s mm will bridge)" % (info["bridges_skipped"], fmt(max_bridge)) if info["bridges_skipped"] else ""))
         else:
             so = cl.show(sup, base + "_supports", doc=d)
-            if FreeCAD.GuiUp:
-                so.ViewObject.ShapeColor = (0.75, 0.75, 0.75)
+            cl.paint(so, (0.75, 0.75, 0.75))
             # supports were cut away from the part, so they can't sit inside it: the boundary
             # distance alone proves clearance (a common() against many islands is very slow)
             gap = p.distToShape(sup)[0]

@@ -1,6 +1,12 @@
 # FreeCAD MCP (ClaudeLink)
 
-Lets Claude drive a live FreeCAD 1.0 session through MCP tools, with compact, token-frugal results.
+Lets Claude drive FreeCAD 1.0 through MCP tools, with compact, token-frugal results.
+
+**Windowless by default.** The tools work in a windowless FreeCAD worker (started on demand), so a heavy step can
+never freeze your FreeCAD window. When the work is done `freecad_show` saves it and opens it in your window, with
+its colours. Views render in software; illustrations and drawings are drawn through the window on a preview copy.
+A call that overruns its timeout is interrupted automatically. Set `CLAUDELINK_TARGET=gui` (or call
+`freecad_target('gui')`) to work live in the window instead.
 
 ```
 Claude --stdio--> server/ (MCP, Python + uv) --127.0.0.1:47823 JSON-lines + token--> addon/ClaudeLink (inside FreeCAD)
@@ -74,7 +80,8 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 |---|---|
 | `freecad_sketch` | solver result, DoF, conflicting/redundant/malformed constraints, open wires; geometry/constraint lists; sketch image |
 | `freecad_drawing` | TechDraw PDF+SVG: projection group, auto standard scale & layout, hidden lines, extent + diameter dims, title block; preview image; `keep=false` leaves no trace |
-| `freecad_target` | switch tools between the GUI and a windowless `freecadcmd` worker (started on demand, results tagged `[headless]`) |
+| `freecad_target` | choose the instance: `headless` (default) = windowless `freecadcmd` worker started on demand, results tagged `[windowless]`; `gui` = work live in the user's window |
+| `freecad_show` | save the windowless work and open/reload it in the user's FreeCAD window, with colours (or a preview copy with `save=false`) |
 
 ## Tools: printing
 | Tool | Purpose |
@@ -127,8 +134,8 @@ Its test cases are in `skills/freecad/evals/` (runnable with `claude plugin eval
 
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
-- Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/ready_headless.py`, `../tests/designs_headless.py`, `../tests/cancel_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
+- Windowless worker by hand: `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; the MCP server starts one itself unless `CLAUDELINK_AUTOSTART=0`).
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/ready_headless.py`, `../tests/designs_headless.py`, `../tests/cancel_headless.py`, `../tests/windowless_mcp.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License

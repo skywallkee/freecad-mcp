@@ -182,7 +182,7 @@ def _shift(a, dy, dx, fill):
 
 
 def render(objects=None, view="iso", size=900, aspect=1.33, shadows=True, ao=True, edges=False, colors=None,
-           background="studio", out=None, doc=None, image=True, quality="normal"):
+           background="studio", out=None, doc=None, image=True, quality="normal", _array=False):
     """See the MCP tool."""
     import numpy as np
     from .analysis import _resolve_objects
@@ -199,11 +199,9 @@ def render(objects=None, view="iso", size=900, aspect=1.33, shadows=True, ao=Tru
         rgb = None
         if colors and o.Name in colors:
             rgb = tuple(colors[o.Name])
-        elif FreeCAD.GuiUp:
-            try:
-                rgb = tuple(o.ViewObject.ShapeColor[:3])
-            except Exception:
-                pass
+        else:
+            from . import cl
+            rgb = cl.color_of(o)
         raw.append(rgb)
     if len({r for r in raw}) > 1:
         same = False
@@ -352,6 +350,8 @@ def render(objects=None, view="iso", size=900, aspect=1.33, shadows=True, ao=Tru
     img = np.clip(img, 0, 1) ** (1 / 2.2)
     img = img.reshape(H // ss, ss, W // ss, ss, 3).mean(axis=(1, 3))     # 2x supersampling
     rgb = (img * 255 + 0.5).astype(np.uint8)
+    if _array:
+        return rgb
     data = _png_bytes(rgb)
     if out is None:
         if d.FileName:
@@ -372,6 +372,34 @@ def render(objects=None, view="iso", size=900, aspect=1.33, shadows=True, ao=Tru
     if not image:
         return text
     return {"text": text, "image_b64": base64.b64encode(data).decode("ascii"), "mime": "image/png"}
+
+
+def sheet(doc=None, views=None, size=380, objects=None, highlight=None):
+    """Contact sheet for freecad_view when there is no window: one software-rendered tile per view."""
+    import numpy as np
+    t0 = time.time()
+    d = _doc(doc)
+    views = views or ["iso", "front", "top", "right"]
+    size = max(120, min(int(size), 1000))
+    alias = {"dimetric": "iso", "trimetric": "iso", "isometric": "iso"}
+    cols = {k: (0.15, 0.85, 0.35) for k in (highlight or [])}
+    tiles = []
+    for v in views:
+        tiles.append(render(objects=objects, view=alias.get(v, v), size=size, aspect=1.0, shadows=False, ao=True,
+                            edges=True, colors=cols or None, background="white", doc=d.Name, _array=True))
+    nc = 1 if len(tiles) == 1 else 2 if len(tiles) <= 4 else 3
+    nr = (len(tiles) + nc - 1) // nc
+    out = np.full((nr * size, nc * size, 3), 255, np.uint8)
+    for i, t in enumerate(tiles):
+        y, x = (i // nc) * size, (i % nc) * size
+        t = t[:size, :size]
+        out[y:y + t.shape[0], x:x + t.shape[1]] = t
+        out[y:y + size, x] = 200
+        out[y, x:x + size] = 200
+    text = "%s: %s, %dx%d px (windowless render, tiles left to right then down%s) (%.1fs)" % (
+        d.Name, ", ".join(views), out.shape[1], out.shape[0],
+        (", isolated " + ", ".join(objects)) if objects else "", time.time() - t0)
+    return {"text": text, "image_b64": base64.b64encode(_png_bytes(out)).decode("ascii"), "mime": "image/png"}
 
 
 METHODS = {"render": render}

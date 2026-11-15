@@ -13,7 +13,10 @@ HEADLESS_SCRIPT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 
                                                "headless_serve.py"))
 HEADLESS_PORT = 47824
 
-_state = {"target": os.environ.get("CLAUDELINK_TARGET", "gui").lower(), "worker": None}
+# Default: a windowless FreeCAD worker, so nothing can freeze the user's FreeCAD window. The window is used
+# for the few things that need it (freecad_show, illustrations, drawings) or with freecad_target('gui').
+_state = {"target": os.environ.get("CLAUDELINK_TARGET", "headless").lower(), "worker": None, "starting": False}
+AUTOSTART = os.environ.get("CLAUDELINK_AUTOSTART", "1") != "0"
 
 
 class LinkError(Exception):
@@ -47,7 +50,7 @@ def _endpoint(t=None):
     return int(port), token
 
 
-def call(method, params=None, timeout=300.0, t=None):
+def call(method, params=None, timeout=300.0, t=None, autostart=True):
     t = t or _state["target"]
     port, token = _endpoint(t)
     req = {"token": token, "method": method, "params": {k: v for k, v in (params or {}).items() if v is not None},
@@ -56,10 +59,17 @@ def call(method, params=None, timeout=300.0, t=None):
         s = socket.create_connection(("127.0.0.1", port), timeout=5)
     except OSError:
         if t == "headless":
-            raise LinkError("headless worker not running on port %d; call freecad_target('headless') to start it" % port)
-        raise LinkError("FreeCAD is not reachable on 127.0.0.1:%d. Ask the user to start FreeCAD "
+            if autostart and AUTOSTART and not _state["starting"]:
+                _state["starting"] = True
+                try:
+                    start_worker()
+                finally:
+                    _state["starting"] = False
+                return call(method, params, timeout, t)
+            raise LinkError("windowless worker not running on port %d; call freecad_target('headless') to start it" % port)
+        raise LinkError("The FreeCAD window is not reachable on 127.0.0.1:%d. Ask the user to start FreeCAD "
                         "(the ClaudeLink addon starts with it). Do not launch the FreeCAD GUI yourself; "
-                        "for windowless work use freecad_target('headless')." % port)
+                        "windowless work (freecad_target('headless'), the default) does not need it." % port)
     with s:
         s.settimeout(timeout + 10)
         s.sendall((json.dumps(req) + "\n").encode("utf-8"))
@@ -79,7 +89,7 @@ def call(method, params=None, timeout=300.0, t=None):
 
 def reachable(t):
     try:
-        call("status", timeout=5, t=t)
+        call("status", timeout=5, t=t, autostart=False)
         return True
     except LinkError:
         return False
@@ -111,6 +121,10 @@ def stop_worker():
     if p is None or p.poll() is not None:
         _state["worker"] = None
         return "no headless worker started by this server"
+    try:        # keep recovery copies of whatever was open (FreeCAD/ClaudeLink/handoff/<Doc>.FCStd)
+        call("handoff_all", timeout=60, t="headless")
+    except Exception:
+        pass
     p.terminate()
     try:
         p.wait(5)

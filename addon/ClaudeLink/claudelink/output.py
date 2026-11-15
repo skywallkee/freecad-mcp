@@ -135,11 +135,10 @@ def export(objects=None, format="stl", dir=None, path=None, tolerance=0.01, angu
 
 def _obj_rgb(o, k):
     from .splitting import _COLOURS
-    try:
-        if FreeCAD.GuiUp:
-            return tuple(o.ViewObject.ShapeColor[:3])
-    except Exception:
-        pass
+    from . import cl
+    c = cl.color_of(o)
+    if c is not None:
+        return c
     for name, rgb in _COLOURS.items():          # headless: colour-split names end in _<colour>
         if re.search(r"(^|_)%s($|_)" % name, o.Name.lower()):
             return rgb

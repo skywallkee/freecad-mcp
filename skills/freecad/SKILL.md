@@ -5,8 +5,10 @@ description: Workflow and ground rules for designing, checking and preparing 3D-
 
 # FreeCAD through the freecad MCP
 
-The `freecad_*` tools drive the user's running FreeCAD 1.0. Every tool answers with a compact text summary
-(and an image only when asked), so you can work by numbers instead of screenshots. This file is the map;
+The `freecad_*` tools drive FreeCAD 1.0. By default they work in a **windowless FreeCAD worker** (started on
+demand, results tagged `[windowless]`), so nothing you run can freeze the user's FreeCAD window; `freecad_show`
+puts the result in their window when you are done. Every tool answers with a compact text summary (and an image
+only when asked), so you can work by numbers instead of screenshots. This file is the map;
 the `references/` files hold the detail - read one when the task enters its area, not before.
 
 | When the task involves... | Read |
@@ -19,11 +21,18 @@ the `references/` files hold the detail - read one when the task enters its area
 | a tool failed, invalid shape, FreeCAD unreachable | `references/troubleshooting.md` |
 
 ## Ground rules (these protect the user's work)
-- **Never start FreeCAD yourself.** If `freecad_status` can't reach it, ask the user to open it, or use
-  `freecad_target('headless')` for windowless work (no view/illustrate images there) and switch back to `'gui'`.
+- **Work windowless, show at the end.** The worker opens documents from their files, so unsaved changes in
+  the user's window are not in it. When the work is done (or the user wants to look) call `freecad_show`: it
+  saves the document and opens/reloads it in their window with its colours. `freecad_view` renders in software;
+  `freecad_illustrate` and `freecad_drawing` are drawn through the window on a preview copy, so only those two
+  need the window open. Use `freecad_target('gui')` only when the user wants to watch live or the task is about
+  what they have open and unsaved - then everything you run blocks their window, so keep steps light.
+- **Never start the FreeCAD window yourself.** If a tool needs it and it isn't running, ask the user to open it.
+- A call that overruns its timeout is interrupted automatically; `freecad_cancel` stops a job by hand.
 - **Don't save, overwrite exports or edit an existing project's build script unless the task asks for it.**
-  Report what you found and offer the change. New objects you create are fine. For a new design, work in a new
-  (unsaved) document and offer to save it or turn it into a parametric project. Exporting the print files the
+  Report what you found and offer the change (`freecad_show save=false` shows a preview copy without writing
+  anything). New objects you create are fine. For a new design, work in a new document and save it to a new
+  folder (`freecad_doc saveas`, or `freecad_project_new`) so `freecad_show` can hand it over. Exporting the print files the
   user asked for IS the deliverable: write them to a new folder (e.g. `~/Documents/<DesignName>/stl/`), never
   over existing files, and say where they are.
 - **In a parametric project the build script is the source of truth.** Rebuilding replaces the objects, so
@@ -38,13 +47,15 @@ the `references/` files hold the detail - read one when the task enters its area
 
 ## The loop
 1. **Orient**: `freecad_status`, then `freecad_tree` (depth 1). For a project folder: `freecad_project_info`.
+   An existing file: `freecad_doc open` (the worker starts empty).
 2. **Build** one coherent step at a time: a dedicated tool when one exists (see the map below), otherwise
    `freecad_exec` with the `cl` helpers. Projects: change parameters with `freecad_project_params` /
    `freecad_project_rebuild`, not by pasting code.
 3. **Read the change summary** each call returns (bbox and volume deltas, INVALID, recompute errors). Fix
    problems before the next step - they compound.
 4. **Verify with numbers** (gates below), then one small `freecad_view` (1-2 views, size 300) to confirm.
-5. **Deliver** what was asked: files, a summary of dimensions and clearances, and what is still unverified.
+5. **Deliver** what was asked: files, `freecad_show` so the user can check the model in their window, a summary
+   of dimensions and clearances, and what is still unverified.
 
 ## Which tool when
 - **Check**: `freecad_check_geometry` (after booleans/fillets), `freecad_measure` (dimensions, distances,

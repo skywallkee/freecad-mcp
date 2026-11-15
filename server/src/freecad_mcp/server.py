@@ -1,5 +1,6 @@
 """FreeCAD MCP server: thin, token-frugal tools over a live FreeCAD session (ClaudeLink addon)."""
 import asyncio
+import os
 import base64
 from typing import Literal
 
@@ -8,16 +9,22 @@ from mcp.server.fastmcp import FastMCP, Image
 from . import client
 from .client import LinkError, call
 
-INSTRUCTIONS = """Drives the user's live FreeCAD 1.0 GUI. Never launch FreeCAD yourself; if it is not
-reachable, ask the user to start it.
+INSTRUCTIONS = """Drives FreeCAD 1.0. By default the tools work in a WINDOWLESS FreeCAD worker (started on
+demand), so nothing you run can freeze the user's FreeCAD window; results are tagged [windowless]. When the work
+is done - or the user wants to look - call freecad_show: it saves the document and opens it in their window.
+freecad_view renders in software there; freecad_illustrate / freecad_drawing are drawn through the window on a
+preview copy (the window must be open for those two only). The worker opens documents from their files: unsaved
+changes in the user's window are not in it. freecad_target('gui') works directly in the window instead (use it
+when the user wants to watch, or to act on what they have open and unsaved). Never launch the FreeCAD GUI
+yourself; if the window is needed and not reachable, ask the user to start it.
 Workflow: freecad_status -> build with freecad_exec / freecad_run_file -> read the change summary
 (it lists added/changed objects with bbox, volume, validity and recompute problems) -> freecad_view
-once to check visually -> fix -> save with freecad_doc.
+once to check visually -> fix -> freecad_show (or freecad_doc save).
 - freecad_exec keeps one persistent namespace (App, Gui, Part, V=App.Vector, math, step() preloaded);
   the value of a trailing expression is returned. Each call is one undo step; on error the changes
   are rolled back unless rollback_on_error=false.
 - Prefer freecad_run_file with overrides for parametric build scripts instead of pasting code.
-- A call that times out with "still running" keeps the user's FreeCAD busy: freecad_cancel interrupts it.
+- A call that runs past its timeout is interrupted automatically; freecad_cancel interrupts a job by hand.
 - `cl` helpers are preloaded (cl.help() lists them): selectors cl.sel(obj, "edges %Circle z>40"),
   cl.show(shape, name) (replaces in place), cl.place, cl.revolve, cl.ring, cl.polar, cl.union,
   cl.cut, cl.fillet/chamfer with per-edge fallback, cl.check.
@@ -47,15 +54,21 @@ once to check visually -> fix -> save with freecad_doc.
 - Clearances for printed fits come from the print profile (freecad_print_profile; cl.fit('slide'),
   cl.hole('insert_m3')) - never hard-code guesses when the profile has measured values.
 - freecad_sketch to debug sketches (DoF, conflicts, open wires); freecad_drawing for a dimensioned
-  PDF; freecad_target('headless') for windowless batch work (switch back with 'gui').
+  PDF.
 - obj.Shape of a Part::Feature already includes its Placement. Assign whole Placements
   (obj.Placement.Base.z = x edits a copy)."""
 
 mcp = FastMCP("freecad", instructions=INSTRUCTIONS)
 
 
+WINDOW_ONLY = {"illustrate", "drawing"}     # drawn by the FreeCAD window (3D view snapshots / TechDraw)
+
+
 async def _call(method, timeout=300.0, **params):
-    tag = "[headless] " if client.target() == "headless" else ""
+    headless = client.target() == "headless"
+    if headless and method in WINDOW_ONLY:
+        return await _via_window(method, timeout, params)
+    tag = "[windowless] " if headless else ""
     try:
         res = await asyncio.to_thread(call, method, params, timeout)
     except LinkError as e:
@@ -65,6 +78,42 @@ async def _call(method, timeout=300.0, **params):
             res["text"] = tag + res.get("text", "")
         elif isinstance(res, str):
             res = tag + res
+    return res
+
+
+async def _via_window(method, timeout, params):
+    """Working windowless, but this tool draws with the FreeCAD window: hand the document over as a preview copy,
+    run the tool on it there, close the preview again. The user's own open documents are not touched."""
+    def run():
+        h = call("handoff", {"doc": params.get("doc")}, 180, "headless")
+        if not client.reachable("gui"):
+            raise LinkError("%s is drawn by the FreeCAD window, which is not running. Ask the user to open FreeCAD "
+                            "(the windowless work is safe and stays as it is), then call this again." % method)
+        g = call("gui_open", {"path": h["copy"], "preview": True, "activate": False}, 180, "gui")
+        p = dict(params, doc=g["name"])
+        folder = os.path.dirname(h["file"]) if h.get("file") else None
+        if folder:                      # outputs belong next to the real document, not the preview copy
+            if method == "illustrate" and not p.get("out_dir"):
+                p["out_dir"] = os.path.join(folder, "images")
+            if method == "drawing" and not p.get("path"):
+                p["path"] = os.path.join(folder, "images", "%s_drawing.pdf" % "_".join(
+                    str(o).lower() for o in (p.get("objects") or [])))
+        try:
+            return call(method, p, timeout, "gui")
+        finally:
+            try:
+                call("gui_close", {"name": g["name"]}, 60, "gui")
+            except LinkError:
+                pass
+    tag = "[windowless, drawn in the window] "
+    try:
+        res = await asyncio.to_thread(run)
+    except LinkError as e:
+        return "%sERROR: %s" % (tag, e)
+    if isinstance(res, dict):
+        res["text"] = tag + res.get("text", "")
+    elif isinstance(res, str):
+        res = tag + res
     return res
 
 
@@ -660,17 +709,49 @@ async def freecad_print_profile(action: Literal["show", "set", "record_gauge"] =
 
 
 @mcp.tool()
+async def freecad_show(doc: str | None = None, save: bool = True, force: bool = False) -> str:
+    """Show the windowless work in the user's FreeCAD window so they can check it. save=true (default): saves
+    the document to its file (like freecad_doc save) and opens / reloads that file in the window, with the part
+    colours. A document that was never saved, or save=false, is shown as a preview copy instead (nothing of the
+    user's is written; use freecad_doc saveas to keep it). If the window has the same file open with unsaved
+    changes it refuses unless force=true. Call this when the work is done, or when the user wants to look."""
+    if client.target() != "headless":
+        return "working directly in the FreeCAD window (target gui): the user already sees the model"
+
+    def run():
+        h = call("handoff", {"doc": doc}, 180, "headless")
+        if not client.reachable("gui"):
+            where = h["file"] or h["copy"]
+            if save and h["file"]:
+                call("doc", {"action": "save", "name": h["name"]}, 180, "headless")
+            return ("the FreeCAD window is not running - %s is %s; the user can open it in FreeCAD "
+                    "(colours are applied when it opens)" % (h["name"], ("saved at " + where) if save and h["file"]
+                                                               else ("available as a copy at " + h["copy"])))
+        if save and h["file"]:
+            call("doc", {"action": "save", "name": h["name"]}, 180, "headless")
+            g = call("gui_open", {"path": h["file"], "force": force}, 180, "gui")
+            return g["text"] + " - saved " + h["file"]
+        g = call("gui_open", {"path": h["copy"], "preview": True}, 180, "gui")
+        return g["text"] + (" - PREVIEW COPY (the document has no file yet: freecad_doc saveas to keep it)"
+                            if not h["file"] else " - preview copy, the file on disk is unchanged")
+    try:
+        return await asyncio.to_thread(run)
+    except LinkError as e:
+        return "ERROR: %s" % e
+
+
+@mcp.tool()
 async def freecad_target(target: Literal["gui", "headless"] | None = None, stop_worker: bool = False) -> str:
-    """Choose which FreeCAD instance the tools talk to. 'gui' (default) = the user's FreeCAD window.
-    'headless' = a windowless freecadcmd worker started on demand (for heavy batch work or when the
-    GUI isn't running; no view/drawing tools; results are tagged [headless]). stop_worker=true stops
-    a worker this server started. No arguments: report both instances."""
+    """Choose which FreeCAD instance the tools talk to. 'headless' (default) = a windowless FreeCAD worker,
+    started on demand: nothing can freeze the user's window; freecad_view renders in software, illustrations and
+    drawings are drawn through the window on a preview copy, freecad_show puts the result in the window.
+    'gui' = work directly in the user's FreeCAD window (they watch it change; heavy steps block it).
+    stop_worker=true stops a worker this server started (recovery copies of its open documents are kept).
+    No arguments: report both instances."""
     out = []
     try:
         if stop_worker:
             out.append(await asyncio.to_thread(client.stop_worker))
-            if client.target() == "headless":
-                client.set_target("gui")
         if target == "headless":
             out.append(await asyncio.to_thread(client.start_worker))
             client.set_target("headless")

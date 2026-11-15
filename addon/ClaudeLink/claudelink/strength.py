@@ -131,6 +131,16 @@ def strength(object, fixed, loads, up="+z", material=None, mesh_size=None, doc=N
     if not fixed or not loads:
         raise UserError("need at least one fixed face ref and one load")
     t0 = time.time()
+    # threads defeat the tet mesher: simulate a plain rod at the root diameter / bore at the major diameter
+    simplified = []
+    import re
+    refs = list(fixed) + [str(ld.get("ref", "")) for ld in loads]
+    if not any(re.match(r"^\s*(Face|Edge|Vertex)\d+\s*$", str(r).split(":")[-1]) for r in refs):
+        from . import threads
+        try:
+            shape, simplified = threads.plain(shape)
+        except Exception:
+            simplified = []
     mname, mp, msrc = mech(material)
     upv = _vec_of(up)
     fix_names = sorted({n for r in fixed for n in _faces_for(shape, r, o)}, key=lambda s: int(s[4:]))
@@ -271,6 +281,9 @@ def strength(object, fixed, loads, up="+z", material=None, mesh_size=None, doc=N
             lines.append("%s: %s N total on %d load(s), fixed %s; material %s (E %s MPa, strength %s in-layer / %s across "
                          "layers, %s)" % (o.Name, fmt(total), len(load_specs), ",".join(fix_names), mname, fmt(mp["E"]),
                                           fmt(mp["xy"]), fmt(mp["z"]), msrc))
+            if simplified:
+                lines.append("threads simulated as plain cylinders (%s): root-diameter rod / major-diameter bore, "
+                             "on the safe side; stress at the thread roots themselves is not resolved" % ", ".join(simplified))
             lines.append("mesh: %d nodes, element size %s mm (%s); solve %.1fs" % (
                 len(pts), fmt(round(h, 2)), order, time.time() - t0 - t_mesh))
             lines.append("max von Mises %s MPa at %s on %s -> safety factor %s (in-layer)" % (

@@ -40,9 +40,9 @@ def _show(shape, name, at, d, color=None):
     if at:
         s.translate(V(*at))
     o = cl.show(s, name, doc=d)
-    if color and FreeCAD.GuiUp:
+    if color:
         try:
-            o.ViewObject.ShapeColor = color
+            cl.paint(o, color)
         except Exception:
             pass
     return o

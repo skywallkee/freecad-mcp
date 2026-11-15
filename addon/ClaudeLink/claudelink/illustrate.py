@@ -504,6 +504,74 @@ def _encode(img, fmt_="PNG"):
     return bytes(buf.data())
 
 
+# ------------------------------------------------------------------ fastening notes
+
+def _hole_axes(shape):
+    """Small holes of a part (screw clearance / insert / tapped holes): [(point on axis, unit axis, radius)]."""
+    out = []
+    for f in shape.Faces:
+        s = f.Surface
+        if not isinstance(s, Part.Cylinder) or not 0.7 <= s.Radius <= 4.5:
+            continue
+        try:
+            u0, u1, v0, v1 = f.ParameterRange
+            pm = f.valueAt((u0 + u1) / 2, (v0 + v1) / 2)
+            radial = pm - s.Center
+            radial = radial - s.Axis * radial.dot(s.Axis)
+            if f.normalAt((u0 + u1) / 2, (v0 + v1) / 2).dot(radial) >= 0:
+                continue                             # a pin or boss, not a hole
+        except Exception:
+            continue
+        a = V(s.Axis)
+        a.normalize()
+        out.append((pm - radial, a, s.Radius))
+    return out
+
+
+def _fastenings(insts, new, placed, hardware):
+    """Screw positions where a hole of a part added in this step lines up with a hole of a part already placed.
+    Returns a sentence for the step caption ('' when nothing lines up)."""
+    old = [h for i in placed for h in _hole_axes(insts[i]["shape"])]
+    if not old:
+        return ""
+    seen, radii = [], []
+    for i in new:
+        for p, a, r in _hole_axes(insts[i]["shape"]):
+            for q, b, r2 in old:
+                if abs(abs(a.dot(b)) - 1) > 1e-3:
+                    continue
+                d = q - p
+                if (d - a * d.dot(a)).Length > 0.3 or abs(d.dot(a)) > 25:
+                    continue
+                if any(((p - s0) - a * (p - s0).dot(a)).Length < 0.3 and abs((p - s0).dot(a)) < 12 for s0 in seen):
+                    break                            # same screw seen through another face of the hole
+                seen.append(p)
+                radii.append((r, r2))
+                break
+    if not seen:
+        return ""
+    # the screw size shows in its clearance hole (M3 -> d3.4); fall back to the smaller hole of the pair
+    clear = {2: 1.2, 2.5: 1.45, 3: 1.7, 4: 2.25, 5: 2.75, 6: 3.3, 8: 4.5}
+    size = None
+    for pair in radii:
+        for r in pair:
+            m = min(clear, key=lambda k: abs(clear[k] - r))
+            if abs(clear[m] - r) <= 0.2:
+                size = m
+                break
+        if size:
+            break
+    if size is None:
+        r = min(radii[0])
+        size = max([m for m in clear if m / 2.0 <= r + 0.3] or [2])
+    name = None
+    for n, _q in _parse_items(hardware):
+        if re.search(r"screw|bolt", n.lower()) and re.search(r"\bm%s(\b|x)" % re.escape(str(size)), n.lower()):
+            name = n
+            break
+    return "fasten with %dx %s" % (len(seen), name or ("M%s screw" % size))
+
+
 # ------------------------------------------------------------------ tool / hardware icons
 
 TOOL_KEYS = [(r"hex|allen", "hexkey"), (r"screwdriver|phillips|torx|flat.?head", "screwdriver"),
@@ -842,6 +910,11 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                             pass
                 placed = []
                 for si, st in enumerate(plan):
+                    if not st.get("note") and placed:
+                        try:
+                            st["fasten"] = _fastenings(insts, st["add"], placed, hardware)
+                        except Exception:
+                            st["fasten"] = ""
                     img, vused, desc = _step_page(sc, si + 1, len(plan), st, placed, insts, groups, feats, thumbs,
                                                   vdef, diag, width)
                     save(img, "%s_step%02d.png" % (prefix, si + 1))
@@ -1206,6 +1279,8 @@ def _step_page(sc, num, total, st, placed, insts, groups, feats, thumbs, vdef, d
             desc_parts.append("add %s %s" % (what, _from_words(u)))
     desc = ", ".join(desc_parts)
     desc = desc[:1].upper() + desc[1:]
+    if st.get("fasten"):
+        desc += ", then " + st["fasten"]
     # page
     img, p = _canvas(width, H)
     from PySide import QtGui

@@ -1,4 +1,4 @@
-"""Phase 4 over the real MCP protocol: headless worker targeting, sketch diagnostics, drawing refusal.
+"""Phase 4 over the real MCP protocol: headless worker targeting, sketch diagnostics (drawings through the window: windowless_mcp.py).
 Run:  uv run --directory server python ../tests/phase4_mcp.py"""
 import asyncio
 import os
@@ -46,11 +46,10 @@ async def main():
             fails += not ok
             print("=== %s %d tools incl. sketch/drawing/target\n" % ("PASS" if ok else "FAIL", len(names)))
             await step("start headless worker", "freecad_target", {"target": "headless"}, ["target: headless", "headless worker up"])
-            await step("status is tagged", "freecad_status", {}, ["[headless]", "(headless)"])
+            await step("status is tagged", "freecad_status", {}, ["[windowless]", "(headless)"])
             await step("build sketch", "freecad_exec", {"code": SKETCH}, ["+ Sk"])
             await step("sketch status", "freecad_sketch", {"name": "Sk", "detail": "constraints"},
                        ["degrees of freedom: 4", "1 closed, 0 open", "c5 Horizontal g0"])
-            await step("drawing refuses headless", "freecad_drawing", {"objects": ["Sk"]}, ["needs the FreeCAD GUI"])
             await step("back to gui + stop worker", "freecad_target", {"target": "gui", "stop_worker": True},
                        ["headless worker stopped", "target: gui", "headless worker not running"])
     print("FAILS:", fails)

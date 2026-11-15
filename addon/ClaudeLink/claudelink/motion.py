@@ -166,10 +166,9 @@ def motion(moving, fixed=None, rotate=None, translate=None, steps=36, doc=None, 
         m = mshape.copy()
         m.transformShape(plc(worst[0]).toMatrix())
         go = cl.show(m, "_".join(x.Name for x in mov) + "_collision", doc=d)
-        if FreeCAD.GuiUp:
+        if True:
             try:
-                go.ViewObject.ShapeColor = (1.0, 0.2, 0.2)
-                go.ViewObject.Transparency = 60
+                cl.paint(go, (1.0, 0.2, 0.2), 60)
             except Exception:
                 pass
         lines.append("ghost of the worst position: %s (delete when done)" % go.Name)

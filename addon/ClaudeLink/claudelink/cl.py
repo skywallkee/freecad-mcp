@@ -224,13 +224,87 @@ def show(shape, name, color=None, transparency=None, doc=None, replace=True, pla
     o.Shape = shape
     if placement_ is not None:
         o.Placement = placement_
-    if App.GuiUp:
-        if color is not None:
-            o.ViewObject.ShapeColor = tuple(color)
-        if transparency is not None:
-            o.ViewObject.Transparency = int(transparency)
+    paint(o, color, transparency)
     o.purgeTouched()
     return o
+
+
+def paint(o, color=None, transparency=None):
+    """Colour an object. In the FreeCAD window this sets the view colour; windowless (no view objects) the colour
+    is remembered on the object (CLColor / CLTransparency) and applied when the document is shown in the window."""
+    if color is None and transparency is None:
+        return o
+    if App.GuiUp:
+        try:
+            if color is not None:
+                o.ViewObject.ShapeColor = tuple(color)[:3]
+            if transparency is not None:
+                o.ViewObject.Transparency = int(transparency)
+        except Exception:
+            pass
+        return o
+    try:
+        if color is not None:
+            if "CLColor" not in o.PropertiesList:
+                o.addProperty("App::PropertyColor", "CLColor", "ClaudeLink", "colour to show in the FreeCAD window")
+                o.setEditorMode("CLColor", 2)
+            o.CLColor = tuple(float(c) for c in tuple(color)[:3]) + (0.0,)
+        if transparency is not None:
+            if "CLTransparency" not in o.PropertiesList:
+                o.addProperty("App::PropertyInteger", "CLTransparency", "ClaudeLink", "transparency to show (0-100)")
+                o.setEditorMode("CLTransparency", 2)
+            o.CLTransparency = int(transparency)
+    except Exception:
+        pass
+    return o
+
+
+def color_of(o):
+    """(r, g, b) of an object: its view colour in the window, the remembered colour windowless, else None."""
+    try:
+        if App.GuiUp:
+            return tuple(o.ViewObject.ShapeColor[:3])
+        if "CLColor" in o.PropertiesList:
+            return tuple(o.CLColor[:3])
+    except Exception:
+        pass
+    return None
+
+
+def remember_view(doc):
+    """Windowless, before saving: note which objects are visible (CLVisible), because a file saved without a
+    window carries no view data and would open with everything hidden."""
+    if App.GuiUp:
+        return
+    for o in doc.Objects:
+        try:
+            if "CLVisible" not in o.PropertiesList:
+                o.addProperty("App::PropertyBool", "CLVisible", "ClaudeLink", "visible when shown in the window")
+                o.setEditorMode("CLVisible", 2)
+            o.CLVisible = bool(o.Visibility)
+        except Exception:
+            pass
+
+
+def apply_remembered(doc):
+    """In the window: give objects the colours that were remembered while working windowless. Returns the count."""
+    if not App.GuiUp:
+        return 0
+    n = 0
+    for o in doc.Objects:
+        try:
+            pl = o.PropertiesList
+            if "CLColor" in pl:
+                o.ViewObject.ShapeColor = tuple(o.CLColor[:3])
+                n += 1
+            if "CLTransparency" in pl:
+                o.ViewObject.Transparency = int(o.CLTransparency)
+            if "CLVisible" in pl:
+                o.ViewObject.Visibility = bool(o.CLVisible)
+                n += 0 if "CLColor" in pl else 1
+        except Exception:
+            pass
+    return n
 
 
 # ------------------------------------------------------------------ primitives

@@ -45,11 +45,12 @@ class Executor:
         self.current = None
         self.main_ident = None
         self.started = 0.0
+        self.running = None
 
     def cancel(self):
         """Interrupt the running job from the socket thread: raises KeyboardInterrupt in the main thread, which
         lands as soon as the job is back in Python code (between geometry kernel calls)."""
-        if not self.current or not self.main_ident:
+        if self.running is None or not self.main_ident:
             return {"ok": True, "result": "nothing is running"}
         import ctypes
         n = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(self.main_ident),
@@ -62,11 +63,29 @@ class Executor:
         done = threading.Event()
         self.jobs.put((fn, box, done))
         if not done.wait(timeout):
-            return {"ok": False, "error": "timeout after %ss - the job is still running in FreeCAD "
-                                          "(%s); later calls will queue behind it" % (timeout, self.current)}
+            # nobody is waiting for the result any more: interrupt the job so FreeCAD does not stay locked
+            name = self.current
+            box["abandoned"] = True
+            if self.running is box:
+                self.cancel()
+                if done.wait(20):
+                    return {"ok": False, "error": "timeout after %ss - %s was interrupted and FreeCAD is free again. "
+                                                  "Use a cheaper approach (simpler copy, fewer faces) or a longer "
+                                                  "timeout." % (timeout, name)}
+                return {"ok": False, "error": "timeout after %ss - an interrupt was sent to %s, but it is inside one "
+                                              "long geometry-kernel call and stops when that returns; later calls "
+                                              "queue behind it (freecad_cancel repeats the interrupt)" % (timeout, name)}
+            return {"ok": False, "error": "timeout after %ss waiting behind another job (%s); the call was dropped"
+                                          % (timeout, name)}
         return box["resp"]
 
     def pump(self):
+        try:
+            self._pump()
+        except KeyboardInterrupt:       # an interrupt that landed just after its job ended
+            self.busy = False
+
+    def _pump(self):
         if self.busy:  # re-entered via updateGui() inside a running job
             return
         self.busy = True
@@ -76,8 +95,12 @@ class Executor:
                     fn, box, done = self.jobs.get_nowait()
                 except queue.Empty:
                     return
+                if box.get("abandoned"):          # its caller timed out while it was still queued
+                    done.set()
+                    continue
                 self.main_ident = threading.get_ident()
                 self.started = time.time()
+                self.running = box
                 try:
                     box["resp"] = {"ok": True, "result": fn()}
                 except KeyboardInterrupt:
@@ -87,6 +110,7 @@ class Executor:
                     box["resp"] = {"ok": False, "error": msg}
                 finally:
                     self.current = None
+                    self.running = None
                     done.set()
         finally:
             self.busy = False

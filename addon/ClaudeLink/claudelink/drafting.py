@@ -241,23 +241,69 @@ def _group_extents(pg, items):
     return (min(xs), min(ys), max(xs), max(ys)) if xs else (0, 0, 0, 0)
 
 
-def _fit_group(d, pg, items, area, fixed=None):
-    """Pick the largest standard scale whose layout fits `area`, then centre the group in it."""
+def _sizes(items):
+    out = []
+    for it in items:
+        x0, y0, x1, y1 = _bbox2d(it.getVisibleEdges())
+        out.append((x1 - x0, y1 - y0))
+    return out
+
+
+_ORTHO = {"Front": (0, 2), "Rear": (0, 2), "Top": (0, 1), "Bottom": (0, 1), "Right": (1, 2), "Left": (1, 2)}
+
+
+def _wait_views(items, dims, scale, timeout):
+    """Hidden-line removal runs in the background: after a (re)compute the views keep their OLD edges until it
+    finishes, so "has edges" proves nothing. Wait until every orthographic view has the size the bounding box
+    (dims = X, Y, Z in mm) and the scale must give, and the other views have stopped changing."""
+    from PySide import QtCore
+    t0 = time.time()
+    last, stable_since = None, None
+    while time.time() - t0 < timeout:
+        QtCore.QCoreApplication.processEvents()
+        try:
+            got = _sizes(items)
+            ok = all(g[0] > 0 or g[1] > 0 for g in got)
+            for it, g in zip(items, got):
+                ax = _ORTHO.get(getattr(it, "Type", ""))
+                if ax is None:
+                    continue
+                w, h = dims[ax[0]] * scale, dims[ax[1]] * scale
+                if abs(g[0] - w) > 0.04 * w + 0.3 or abs(g[1] - h) > 0.04 * h + 0.3:
+                    ok = False
+            if ok:
+                if got != last:
+                    last, stable_since = got, time.time()
+                elif time.time() - stable_since >= 0.4:
+                    return True
+            else:
+                last = None
+        except Exception:
+            pass
+        time.sleep(0.05)
+    return False
+
+
+def _fit_group(d, pg, items, area, dims, fixed=None, timeout=60.0, grow=True):
+    """Pick the largest standard scale whose layout fits `area`, then centre the group in it.
+    The scale is computed once from the views' real sizes (never from a half-updated page)."""
     ax0, ay0, ax1, ay1 = area
     aw, ah = (ax1 - ax0) * 0.92, (ay1 - ay0) * 0.85  # leave room for dimensions
-    for _ in range(4):
-        cur = pg.getScale() if hasattr(pg, "getScale") else pg.Scale
-        x0, y0, x1, y1 = _group_extents(pg, items)
-        if fixed is None:
-            f = min(aw / max(x1 - x0, 1e-6), ah / max(y1 - y0, 1e-6))
-            want = next((s for s in _STD_SCALES if s <= cur * f + 1e-9), _STD_SCALES[-1])
-            if abs(want - cur) > 1e-9:
-                pg.ScaleType = "Custom"
-                pg.Scale = want
-                d.recompute()
-                _wait_hlr(items, 15)
-                continue
-        break
+    cur = pg.getScale() if hasattr(pg, "getScale") else pg.Scale
+    x0, y0, x1, y1 = _group_extents(pg, items)
+    if fixed is None and cur > 0:
+        f = min(aw / max(x1 - x0, 1e-6), ah / max(y1 - y0, 1e-6))
+        want = next((s for s in _STD_SCALES if s <= cur * f + 1e-9), _STD_SCALES[-1])
+        if want > cur and not grow:
+            want = cur
+        if abs(want - cur) > 1e-9:
+            pg.ScaleType = "Custom"
+            pg.Scale = want
+            d.recompute()
+            if not _wait_views(items, dims, want, timeout):
+                raise UserError("the drawing views did not finish updating within %d s (hidden-line removal on a very "
+                                "detailed part) - try hidden=false, fewer views, or a simpler copy of the part"
+                                % timeout)
     x0, y0, x1, y1 = _group_extents(pg, items)
     pg.X = (ax0 + ax1) / 2 - (x0 + x1) / 2
     pg.Y = (ay0 + ay1) / 2 - (y0 + y1) / 2
@@ -309,6 +355,11 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
         projs.append(p)
     if "Front" not in projs:
         projs.insert(0, "Front")
+    nfaces = sum(len(o.Shape.Faces) for o in objs if hasattr(o, "Shape"))
+    lines_pre = []
+    if hidden and nfaces > 600:
+        hidden = False       # hundreds of hidden edges are unreadable and take minutes to compute
+        lines_pre.append("hidden lines left out (%d faces: unreadable and very slow) - pass a simpler copy for them" % nfaces)
     tpath = _template_path(template)
     if path is None:
         if not d.FileName:
@@ -320,7 +371,7 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
     FreeCAD.setActiveDocument(d.Name)  # TechDraw.make*Dim create objects in the active document
     FreeCAD.setActiveTransaction("Claude: drawing")
     t0 = time.time()
-    lines = []
+    lines = list(lines_pre)
     page = None
     ok = False
     try:
@@ -330,21 +381,37 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
         page.Template = tpl
         pg = d.addObject("TechDraw::DrawProjGroup", "ClaudeProjGroup")
         page.addView(pg)
+        try:
+            W, H = _f(tpl.Width), _f(tpl.Height)
+        except Exception:
+            W, H = 297.0, 210.0
+        bb = FreeCAD.BoundBox()
+        for o in objs:
+            try:                      # the plain BoundBox is loose around spline surfaces (threads, text)
+                o.Shape.tessellate(0.05)
+                bb.add(o.Shape.optimalBoundingBox(True, False))
+            except Exception:
+                bb.add(o.Shape.BoundBox)
+        dims = (max(bb.XLength, 1e-3), max(bb.YLength, 1e-3), max(bb.ZLength, 1e-3))
+        pg.ScaleType = "Custom"
+        if scale:
+            pg.Scale = float(scale)
+        else:
+            # start at the scale the bounding box predicts, so the (slow, background) hidden-line pass usually
+            # runs once instead of once per scale change
+            X, Y, Z = dims
+            iso = 0.71 * (X + Y) if any(p.startswith("FrontTop") or p.startswith("FrontBottom") for p in projs) else 0.0
+            side = Y if any(p in ("Right", "Left") for p in projs) else 0.0
+            below = Y if any(p in ("Top", "Bottom") for p in projs) else 0.0
+            aw, ah = (W - 30.0) * 0.92, (H * 0.70 - 15.0) * 0.85
+            est = min((aw - 25.0) / (X + side + iso), (ah - 12.0) / (Z + below))
+            pg.Scale = next((sv for sv in _STD_SCALES if sv <= est + 1e-9), _STD_SCALES[-1])
         pg.Source = objs
         for p in projs:
             it = pg.addProjection(p)
             if hidden and it is not None and hasattr(it, "HardHidden"):
                 it.HardHidden = True  # before the first compute, so the page graphics include them
-        if scale:
-            pg.ScaleType = "Custom"
-            pg.Scale = float(scale)
-        else:
-            pg.ScaleType = "Automatic"
         # centre the group in the free area above the title block (bottom ~28% of the sheet)
-        try:
-            W, H = _f(tpl.Width), _f(tpl.Height)
-        except Exception:
-            W, H = 297.0, 210.0
         pg.X, pg.Y = W * 0.45, H * 0.62
         d.recompute()
         items = list(pg.Views)
@@ -352,11 +419,13 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
             if hidden and hasattr(it, "HardHidden"):
                 it.HardHidden = True
         d.recompute()
-        if not _wait_hlr(items):
-            lines.append("warning: hidden-line removal still running after 30s")
+        budget = min(150.0, 30.0 + 0.1 * nfaces)         # hidden-line removal time grows with the face count
+        if not _wait_views(items, dims, pg.getScale() if hasattr(pg, "getScale") else pg.Scale, budget):
+            raise UserError("the drawing views were not ready after %d s (hidden-line removal on %d faces) - try "
+                            "hidden=false, fewer views, or a simpler copy of the part" % (budget, nfaces))
         # fit: free area above the title block, standard scales only
         area = (15.0, H * 0.30, W - 15.0, H - 15.0)
-        sc = _fit_group(d, pg, items, area, None if not scale else float(scale))
+        sc = _fit_group(d, pg, items, area, dims, None if not scale else float(scale), budget, grow=nfaces <= 600)
         sc = pg.getScale() if hasattr(pg, "getScale") else pg.Scale
         texts = dict(tpl.EditableTexts)
         upd = {"FC-Title": title or d.Label, "FC-SC": ("1:%s" % fmt(1 / sc)) if sc < 1 else ("%s:1" % fmt(sc)),
@@ -387,6 +456,7 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
                     dim_vals.append((kind, "width" if direction == 0 else "height", dm))
             # hole/boss diameters: unique radii, prefer the Top view then Front
             seen = set()
+            centres = {}
             for kind in ("Top", "Front", "Right"):
                 it = by.get(kind)
                 if it is None:
@@ -400,6 +470,10 @@ def drawing(objects, doc=None, views=None, template="A4_Landscape_TD", scale=Non
                     key = round(r, 2)
                     if key in seen or len(seen) >= 8:
                         continue
+                    ck = (kind, round(c.Center.x), round(c.Center.y))
+                    if ck in centres and (not full or centres[ck] >= 2):
+                        continue          # concentric arcs (thread turns, chamfers): labels would pile up
+                    centres[ck] = centres.get(ck, 0) + 1
                     seen.add(key)
                     dm = d.addObject("TechDraw::DrawViewDimension", "ClaudeDim")
                     dm.Type = "Diameter" if full else "Radius"
