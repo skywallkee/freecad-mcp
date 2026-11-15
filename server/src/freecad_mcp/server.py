@@ -28,6 +28,8 @@ once to check visually -> fix -> save with freecad_doc.
   freecad_strength for loaded parts (layer-aware FEM), freecad_split when a part is bigger than the
   bed, freecad_color_split for single-colour pieces that assemble without glue, freecad_motion for
   hinges/lids/sliders and print-in-place clearance.
+- Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
+  cutaways (PNG pages in the project's images/ folder).
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
   freecad_project_params / freecad_project_rebuild to change and rebuild, freecad_export for files.
   freecad_checkpoint save before risky multi-step changes.
@@ -417,6 +419,32 @@ async def freecad_motion(moving: list[str] | str, fixed: list[str] | None = None
     safe to print in place (>= profile loose fit), plus a compact gap profile."""
     return await _call("motion", 600, moving=moving, fixed=fixed, rotate=rotate, translate=translate, steps=steps,
                        show_worst=show_worst, doc=doc)
+
+
+@mcp.tool()
+async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cutaway"] | list[str] = "all",
+                             objects: list[str] | None = None, steps: list[dict] | None = None,
+                             base: str | None = None, tools: list | None = None, hardware: list | None = None,
+                             title: str | None = None, view: str = "iso", views: list[str] | None = None,
+                             cut: Literal["x", "y", "z"] | None = None, at: float | None = None,
+                             width: int = 1000, out_dir: str | None = None, preview: bool = True,
+                             preview_width: int = 1000, doc: str | None = None):
+    """Assembly/usage illustration pages (PNG) rendered from the model in a scratch doc (yours untouched):
+    parts = printed parts grouped by identical shape with letters A, B.. + quantity + size, plus
+    `hardware` (["4x M3x10 screw", "2x M3 heat-set insert", "magnet 6x3"]) and `tools`
+    (["2.5 mm hex key", "soldering iron", "soft mallet", "clamp", "CA glue"]) drawn as icons;
+    steps = LEGO-style pages: step number, callout of the parts added, new parts pulled out along their
+    insertion direction with red arrows. Order + directions are planned automatically (base = largest part
+    or `base`; each step adds parts that touch and can slide straight in, keeping later parts insertable;
+    identical parts go in together) or given as steps=[{"add": ["Lid"], "dir": "-z", "note": "...",
+    "view": "iso_left"}]; split/colour-split pins are shown via their hidden <name>_pins_placed;
+    views = hero iso + back/front/right/top (views=[...] to change), with overall size;
+    cutaway = quarter cut from the main view + straight section (cut axis x/y/z at `at`, default centre).
+    view: iso iso_left iso_back iso_back_right iso_below.. front back left right top bottom or dir:x,y,z.
+    Files go to <project>/images (or out_dir); returns paths, the step list and one preview image."""
+    return _out(await _call("illustrate", 900, kind=kind, objects=objects, steps=steps, base=base, tools=tools,
+                            hardware=hardware, title=title, view=view, views=views, cut=cut, at=at, width=width,
+                            out_dir=out_dir, preview=preview, preview_width=preview_width, doc=doc))
 
 
 @mcp.tool()

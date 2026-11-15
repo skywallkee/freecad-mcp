@@ -361,6 +361,19 @@ def _pin_print_shape(pin, p, nvec, dpin):
     return s
 
 
+def _placed_pins(d, base, solids):
+    """Hidden copy of the pins in their assembled positions (used by assembly illustrations)."""
+    if not solids:
+        return None
+    po = cl.show(Part.makeCompound(solids), base + "_pins_placed", doc=d)
+    if FreeCAD.GuiUp:
+        try:
+            po.ViewObject.Visibility = False
+        except Exception:
+            pass
+    return po
+
+
 def _layout(shapes, gap=4.0):
     out, x = [], 0.0
     for s in shapes:
@@ -521,7 +534,7 @@ def split(object, axis=None, positions=None, joint="pin", fit="press", pin_d=Non
     base = name or (o.Name + "_split")
     # remove stale outputs of a previous run
     for x in list(d.Objects):
-        if re.fullmatch(re.escape(base) + r"\d+|" + re.escape(base) + "_pins", x.Name):
+        if re.fullmatch(re.escape(base) + r"\d+|" + re.escape(base) + "_pins(_placed)?", x.Name):
             d.removeObject(x.Name)
     lines.append("%s %s -> %d piece(s); bed %s, margin %s mm" % (
         o.Name, _size(s), len(out_pieces), "x".join(fmt(v) for v in bed), fmt(margin)))
@@ -552,6 +565,7 @@ def split(object, axis=None, positions=None, joint="pin", fit="press", pin_d=Non
             laid = _layout(pin_shapes, 3.0)
             po = cl.show(Part.makeCompound(laid), base + "_pins", doc=d)
             shown.append(po.Name)
+            _placed_pins(d, base, [x[0][5] for x in pins if x[0][0] == "pin"])
             lines.append("  %s: %d pin(s) laid flat on a small flat (print as is), lengths %s mm" % (
                 po.Name, len(pin_shapes), "/".join(sorted({_r(x[0][3], 1) for x in pins if x[0][0] == "pin"}))))
     elif joint != "none":
@@ -799,7 +813,7 @@ def color_split(objects, colors=None, fit="press", joint="pin", doc=None, name=N
     # 2. apply joint geometry
     base = name or (objs[0].Name + "_color")
     for x in list(d.Objects):
-        if re.fullmatch(re.escape(base) + r"\d+(_\w+)?|" + re.escape(base) + "_pins", x.Name):
+        if re.fullmatch(re.escape(base) + r"\d+(_\w+)?|" + re.escape(base) + "_pins(_placed)?", x.Name):
             d.removeObject(x.Name)
     out = []
     for i, pc in enumerate(pieces):
@@ -835,6 +849,7 @@ def color_split(objects, colors=None, fit="press", joint="pin", doc=None, name=N
     pin_shapes = [_pin_print_shape(x[0][5], x[0][1], AX[x[1]], x[0][2]) for x in pins if x[0][0] == "pin"]
     if pin_shapes:
         po = cl.show(Part.makeCompound(_layout(pin_shapes, 3.0)), base + "_pins", doc=d)
+        _placed_pins(d, base, [x[0][5] for x in pins if x[0][0] == "pin"])
         lines.append("  %s: %d pin(s), print in any colour (hidden)" % (po.Name, len(pin_shapes)))
     # 3. filament saved: a multi-colour print purges at every colour change on every mixed layer
     layer = prof.get("layer", 0.2)

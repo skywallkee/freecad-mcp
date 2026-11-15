@@ -29,7 +29,8 @@ windowless work, then switch back with `'gui'`).
 6. Deliver: for printing, `freecad_orient` → `freecad_print_prep` (print copy + engineered snap-off supports),
    then `freecad_export` the `_print` and `_print_supports` objects together. Too big for the bed: `freecad_split`
    (press-fit pins). Several colours: `freecad_color_split` (single-colour pieces, glue-free inlays/pins); `freecad_drawing` for a
-   dimensioned PDF; `freecad_doc save`.
+   dimensioned PDF; `freecad_doc save`. Assembly/usage docs: `freecad_illustrate` (parts + hardware/tools sheet,
+   LEGO-style steps with auto order and insertion arrows, product views, cutaway) - pass the real hardware and tools.
 
 ## Printed fits
 - Clearances come from the print profile: `freecad_print_profile` (show) and `cl.fit('press'|'snug'|'slide'|'loose')`,

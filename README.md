@@ -85,6 +85,7 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 | `freecad_split` | split a part bigger than the bed at small, compact sections; press-fit pins (printed flat) or integral pegs, 2+ per interface; small 45° bosses carry pins in thin walls |
 | `freecad_color_split` | one single-colour piece per colour region; finds each piece's assembly direction; press-fit inlay pockets (exact 2D offset for logos/text) or pinned flat joints; flags pieces that can't be assembled; estimates the purge a multi-colour print would waste |
 | `freecad_motion` | rotate/slide parts through their travel: collision ranges with a ghost of the worst position, min clearance with fit class, print-in-place check |
+| `freecad_illustrate` | assembly/usage PNG pages: parts + hardware + tools sheet (identical parts grouped, lettered, sized; tool icons), LEGO-style steps (auto assembly order that keeps later parts insertable, parts pulled out along their insertion direction with arrows; or your own steps), hero + orthographic views with overall size, quarter cutaway + section; saved to the project's `images/` |
 
 Engineered supports go only under overhangs that need them (anchored flat spans up to `max_bridge`
 bridge instead). Each support is a thin vertical wall designed in its own plane: the part's section
@@ -109,7 +110,7 @@ Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token d
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/mcp_roundtrip.py`.
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/mcp_roundtrip.py`.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License

@@ -774,6 +774,7 @@ from . import printprep as _printprep  # noqa: E402
 from . import strength as _strength  # noqa: E402
 from . import splitting as _splitting  # noqa: E402
 from . import motion as _motion  # noqa: E402
+from . import illustrate as _illustrate  # noqa: E402
 
 METHODS.update(_analysis.METHODS)
 METHODS.update(_project.METHODS)
@@ -781,3 +782,4 @@ METHODS.update(_output.METHODS)
 METHODS.update(_drafting.METHODS)
 METHODS.update(_profile.METHODS)
 METHODS.update(_printprep.METHODS); METHODS.update(_strength.METHODS); METHODS.update(_splitting.METHODS); METHODS.update(_motion.METHODS)
+METHODS.update(_illustrate.METHODS)
