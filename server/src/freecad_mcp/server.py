@@ -31,6 +31,7 @@ once to check visually -> fix -> save with freecad_doc.
   hinges/lids/sliders and print-in-place clearance.
 - Fasteners: freecad_fastener (screw holes, printed threads, nut traps, heat-set inserts, snap hooks;
   cl.thread/tapped_hole/screw_hole/nut_trap/insert_hole/selftap_hole/snap_hook in code).
+- Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
@@ -504,6 +505,25 @@ async def freecad_print_fix(object: str, up: str = "auto", fillets: bool = True,
     warping. In place for a Part::Feature (one undo step + auto checkpoint) or into `name`."""
     return await _call("print_fix", 600, object=object, up=up, fillets=fillets, membranes=membranes,
                        teardrops=teardrops, ears=ears, ear_d=ear_d, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_label(object: str, text: str | None = None, at: str = "faces >Z",
+                        mode: Literal["emboss", "engrave"] = "emboss", kind: Literal["text", "stamp", "qr"] = "text",
+                        size: float | None = None, depth: float | None = None, font: str | None = None,
+                        xdir: str | list[float] | None = None, offset: list[float] | None = None,
+                        module: float | None = None, up: str = "auto", name: str | None = None,
+                        doc: str | None = None) -> str:
+    """Text, version stamps and QR codes on a planar face (at = face selector; note 'faces >Z' picks the highest
+    face, which after embossing may be a letter - use e.g. 'faces z=6'). size = cap height mm (auto fits the
+    face); offset = [dx, dy] in the face's text frame; font: sans (bold, default), sans-regular, mono,
+    condensed or a .ttf path; multi-line with 
+. Measures the real letter strokes: warns below two perimeters
+    (emboss) or one nozzle width (engrave) and says the size that prints. kind=stamp: engraved text (default
+    today's date, 4 mm) on the face that sits on the bed in print orientation `up`. kind=qr: text = data (<=106
+    bytes), module = square size mm. Refuses labels that would hang off the face. In place + auto checkpoint."""
+    return await _call("label", 300, object=object, text=text, at=at, mode=mode, kind=kind, size=size, depth=depth,
+                       font=font, xdir=xdir, offset=offset, module=module, up=up, name=name, doc=doc)
 
 
 @mcp.tool()

@@ -73,8 +73,25 @@ try:
     step("corner pads", "print_fix", ["4 corner pad(s)"], object="Sheet", up="+z", ears=True, fillets=False,
          name="Sheet_pads")
     step("checkpoints exist", "checkpoint", ["before_print_fix"], action="list")
-    step("restore first checkpoint brings fillets back", "checkpoint", ["restored"], action="restore", name="001")
-    step("fillets back after restore", "ready", ["downward-facing fillet"], objects=["Rounded"], up="+z")
+    step("restore the checkpoint taken before the cbore fix", "checkpoint", ["restored"], action="restore", name="before_print_fix_cbore")
+    step("counterbore back after restore", "ready", ["face-down counterbore"], objects=["Cbore"], up="+z")
+    # labels
+    call("exec", {"code": "cl.show(Part.makeBox(80, 40, 6, V(0, 300, 0)), 'Plate')"})
+    step("embossed text on top", "label", ["emboss text 'Hello'", "valid"], ["strokes under"],
+         object="Plate", text="Hello", at="faces >Z", size=8, offset=[15, 0])
+    step("engraved text on the front", "label", ["engrave text", "normal (0, -1, 0)"], object="Plate",
+         text="FRONT", at="faces <Y", mode="engrave", size=4)
+    step("tiny embossed text warns", "label", ["strokes under 0.8", "cap height"], object="Plate", text="tiny",
+         at="faces z=6", size=2, offset=[25, 12])
+    step("date stamp under the part", "label", ["engrave text '20", "normal (0, 0, -1)"], object="Plate",
+         kind="stamp", up="+z")
+    step("stamp default size is small", "label", ["4 mm cap height"], object="Plate", kind="stamp", up="+z",
+         text="v2", offset=[25, 0])
+    step("QR code", "label", ["QR code (25x25 modules", "valid"], object="Plate", kind="qr",
+         text="Hello from FreeCAD", at="faces z=6", module=1.0, offset=[-22, 0])
+    step("label past the edge is refused", "label", ["loose piece"], object="Plate", text="WAY TOO LONG TEXT",
+         at="faces z=6", size=12)
+    step("plate still one valid solid", "exec", ["valid, 1 solids"], code="cl.check(App.ActiveDocument.Plate)")
     print("FAILS: %d" % fails)
 finally:
     proc.kill()
