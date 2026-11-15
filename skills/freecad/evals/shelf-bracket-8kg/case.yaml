@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: shelf-bracket-8kg
+expected_outcome: |
+  Models the bracket, runs the strength check with about 78 N and the print direction considered, iterates to a safety factor of at least 3, adds countersunk screw holes with the fastener tool, runs the readiness check with the same print orientation, then exports.
+context:
+  scaffold_script: place-files.sh

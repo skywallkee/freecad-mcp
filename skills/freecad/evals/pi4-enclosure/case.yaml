@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: pi4-enclosure
+expected_outcome: |
+  Uses the enclosure generator for the Pi 4 with vents and a screw lid, checks overlaps and print readiness, exports base and lid, lists the hardware from the enclosure report, and warns that connector positions/clearances are typical or profile guesses.
+context:
+  scaffold_script: place-files.sh

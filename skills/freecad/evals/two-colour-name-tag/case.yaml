@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: two-colour-name-tag
+expected_outcome: |
+  Creates the tag with text (label tool or text solids) at a printable size, uses colour split to make glue-free single-colour pieces, checks the pieces, and exports one file per colour.
+context:
+  scaffold_script: place-files.sh

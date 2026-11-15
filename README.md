@@ -120,7 +120,9 @@ clearances (press < snug < slide < loose), M3 insert / self-tap hole sizes and X
 Measure them with the FitGauge print in `examples/fit_gauge` (`record_gauge`). Used by `freecad_printability`
 defaults, fit-class labels in `freecad_fit` / `freecad_measure`, and `cl.fit()` / `cl.hole()` / `cl.profile()`.
 
-Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token discipline, project conventions).
+Workflow skill: `skills/freecad/SKILL.md` (ground rules, loop, which-tool-when map, gates before "done") with
+`references/` loaded on demand (modelling, printing, design helpers, docs/output, recipes, troubleshooting).
+Its test cases are in `skills/freecad/evals/` (runnable with `claude plugin eval`).
 
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.

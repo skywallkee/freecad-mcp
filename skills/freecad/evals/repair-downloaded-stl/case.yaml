@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: repair-downloaded-stl
+expected_outcome: |
+  Imports and repairs the mesh with the mesh import tool, converts it to a solid, adds the 6 mm hole as a boolean cut, validates the geometry and print readiness, and exports to a new file without overwriting the download.
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: split-tray-with-instructions
+expected_outcome: |
+  Reads the project without saving or editing it, splits the tray with pins, checks each piece fits and is print-ready, produces printable assembly instructions (illustrate steps or manual PDF) that include the pins, and exports pieces and pins without overwriting existing project exports.
+context:
+  scaffold_script: place-files.sh
