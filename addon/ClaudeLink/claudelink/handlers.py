@@ -778,6 +778,7 @@ from . import illustrate as _illustrate  # noqa: E402
 from . import fasteners as _fasteners  # noqa: E402
 from . import ready as _ready  # noqa: E402
 from . import labels as _labels  # noqa: E402
+from . import mechanisms as _mechanisms  # noqa: E402
 
 METHODS.update(_analysis.METHODS)
 METHODS.update(_project.METHODS)
@@ -789,3 +790,4 @@ METHODS.update(_illustrate.METHODS)
 METHODS.update(_fasteners.METHODS)
 METHODS.update(_ready.METHODS)
 METHODS.update(_labels.METHODS)
+METHODS.update(_mechanisms.METHODS)

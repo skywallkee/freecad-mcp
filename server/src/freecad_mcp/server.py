@@ -31,6 +31,7 @@ once to check visually -> fix -> save with freecad_doc.
   hinges/lids/sliders and print-in-place clearance.
 - Fasteners: freecad_fastener (screw holes, printed threads, nut traps, heat-set inserts, snap hooks;
   cl.thread/tapped_hole/screw_hole/nut_trap/insert_hole/selftap_hole/snap_hook in code).
+- Mechanisms: freecad_mechanism (gears, print-in-place hinges, living hinges, flexures, springs).
 - Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
@@ -524,6 +525,21 @@ async def freecad_label(object: str, text: str | None = None, at: str = "faces >
     bytes), module = square size mm. Refuses labels that would hang off the face. In place + auto checkpoint."""
     return await _call("label", 300, object=object, text=text, at=at, mode=mode, kind=kind, size=size, depth=depth,
                        font=font, xdir=xdir, offset=offset, module=module, up=up, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_mechanism(kind: Literal["gear", "gear_pair", "hinge", "living_hinge", "flexure", "spring"],
+                            params: dict | None = None, at: list[float] | None = None, name: str | None = None,
+                            doc: str | None = None) -> str:
+    """Printable mechanisms as new objects, sized from the print profile, each with its engineering check.
+    params per kind (all optional):
+    gear: module 1.5, teeth 20, thickness 6, pressure_angle 20, backlash (default 2x slide fit), bore, dflat;
+    gear_pair: + teeth2 40, bore2 -> meshed at the right centre distance; ratio, contact ratio, mesh gap;
+    hinge (print-in-place pin): length 40, diameter 8, width 20, thickness 3, knuckles 5, clearance (loose fit);
+    living_hinge: length 40, thickness, span 4, width 20, plate 3, angle 90 -> web strain vs material;
+    flexure (parallelogram): length 20, thickness 1, width 10, gap 20 -> stiffness N/mm, max travel;
+    spring (compression, square wire): diameter 12, wire 1.6, coils 6, length 20 -> rate N/mm, travel."""
+    return await _call("mechanism", 300, kind=kind, params=params, at=at, name=name, doc=doc)
 
 
 @mcp.tool()
