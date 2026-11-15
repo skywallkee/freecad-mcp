@@ -39,6 +39,7 @@ once to check visually -> fix -> save with freecad_doc.
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
+  freecad_variants for S/M/L-style size variants (rebuilt, exported, checked),
   freecad_project_params / freecad_project_rebuild to change and rebuild, freecad_export for files.
   freecad_checkpoint save before risky multi-step changes.
 - Clearances for printed fits come from the print profile (freecad_print_profile; cl.fit('slide'),
@@ -599,6 +600,17 @@ async def freecad_mesh_import(path: str | None = None, mesh: str | None = None, 
     scale=25.4 for inch files, 1000 for metres."""
     return await _call("mesh_import", 900, path=path, mesh=mesh, name=name, repair=repair, solid=solid,
                        features=features, max_facets=max_facets, scale=scale, doc=doc)
+
+
+@mcp.tool()
+async def freecad_variants(variants: dict, project: str | None = None, objects: list[str] | None = None,
+                           format: Literal["stl", "3mf", "step"] = "stl", check: bool = True, up: str = "auto") -> str:
+    """Size variants of a parametric project: variants={"S": {"WIDTH": 30}, "L": {"WIDTH": 60}} (parameter
+    names from freecad_project_info). Each variant is rebuilt, its parts (objects or visible solids) exported to
+    <project>/stl/<variant>/ and print-checked (freecad_ready); returns a size/grams/verdict table. The project
+    is rebuilt with its original values afterwards (nothing is saved)."""
+    return await _call("variants", 1800, project=project, variants=variants, objects=objects, format=format,
+                       check=check, up=up)
 
 
 @mcp.tool()

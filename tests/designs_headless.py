@@ -102,6 +102,14 @@ try:
     step("solid usable for booleans", "exec", ["valid, 1 solids"],
          code="cl.check(App.ActiveDocument.broken.Shape.cut(Part.makeBox(5, 5, 50, V(-1, -1, -1))))")
     step("metre-scale file flagged", "mesh_import", ["probably in metres"], path=stl_m, solid=False, features=False)
+    # --- size variants of a project
+    pdir = os.path.join(TMP, "VarBox")
+    step("scaffold a project", "project_new", ["VarBox"], name="VarBox", folder=pdir)
+    step("S/M/L variants", "variants", ["3 variant(s)", "S WIDTH=30", "L WIDTH=60", "30x30x10", "60x30x10",
+                                        "stl", "READY", "original values"],
+         project=pdir, variants={"S": {"WIDTH": 30}, "M": {"WIDTH": 45}, "L": {"WIDTH": 60}})
+    step("files per variant", "exec", ["[1, 1, 1]"], code="import os; [len(os.listdir(os.path.join(%r, 'stl', v))) for v in ('s', 'm', 'l')]" % pdir)
+    step("unknown parameter refused", "variants", ["unknown parameter"], project=pdir, variants={"X": {"NOPE": 1}})
     print("FAILS: %d" % fails)
 finally:
     proc.kill()
