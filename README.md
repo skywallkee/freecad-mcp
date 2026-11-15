@@ -87,6 +87,16 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 | `freecad_motion` | rotate/slide parts through their travel: collision ranges with a ghost of the worst position, min clearance with fit class, print-in-place check |
 | `freecad_illustrate` | assembly/usage PNG pages: parts + hardware + tools sheet (identical parts grouped, lettered, sized; tool icons), LEGO-style steps (auto assembly order that keeps later parts insertable, parts pulled out along their insertion direction with arrows; or your own steps), hero + orthographic views with overall size, quarter cutaway + section; `manual` adds a print list (colour, quantity, least-support orientation, grams) and binds everything into one A4 PDF; saved to the project's `images/` |
 | `freecad_fastener` | printable fasteners on a part: ISO clearance holes with counterbore/countersink, internal and external ISO metric threads (M2-M24, clearance from the profile), nut traps (side slot or buried/captive), heat-set insert holes and bosses, self-tap holes, cantilever snap hooks with strain check and push-in force. Also as `cl.thread / tapped_hole / screw_hole / nut_trap / insert_hole / selftap_hole / snap_hook` |
+| `freecad_ready` | one print-readiness verdict per part: validity, bed fit, supports, downward fillets, face-down counterbores, horizontal holes, walls thinner than the nozzle, holes < 2 mm, warping risk (material, footprint, sharp corners), tipping, overlaps; optional strength; each problem names its fix |
+| `freecad_print_fix` | fixes on the model: downward fillets -> 45-deg chamfers, one-layer membranes over face-down counterbores, teardrops, corner pads against warping |
+| `freecad_label` | embossed/engraved text (stroke width measured against the nozzle), date/version stamp under the part, QR codes (built-in encoder) |
+| `freecad_mechanism` | involute gears and meshed pairs, print-in-place pin hinges, living hinges, parallelogram flexures, compression springs - each with its check (mesh gap, clearance, strain, stiffness, rate) |
+| `freecad_lighten` | hex/grid/circle/slot cut-outs on a face with a solid border; grams saved; optional FEM before/after |
+| `freecad_stdpart` | bearings, magnets, servos, boards as reference parts or seats cut into a part |
+| `freecad_enclosure` | enclosure for a Pi 4/5/Zero, Arduino Uno/Nano, ESP32 or a size: insert standoffs, port cut-outs, screw-ear or snap lid, vents, hardware list |
+| `freecad_mesh_import` | repair a downloaded/scanned STL/OBJ/3MF/PLY, list flat faces and fitted holes/bosses, convert to a solid |
+| `freecad_variants` | S/M/L-style variants of a project: rebuild, export to stl/<variant>/, print-check, size/weight table |
+| `freecad_render` | presentation renders with soft lighting, cast shadows and ambient occlusion (pure numpy, works headless) |
 
 Engineered supports go only under overhangs that need them (anchored flat spans up to `max_bridge`
 bridge instead). Each support is a thin vertical wall designed in its own plane: the part's section
@@ -94,6 +104,10 @@ bridge instead). Each support is a thin vertical wall designed in its own plane:
 the walls touch the part only as lines with a one-layer gap. Walls run in a grid (`spacing`), get small
 grip fins at bed level, and every piece is distance-checked; anything closer than half the gap is left
 out and reported.
+
+Tools that change or replace objects (split, color_split, print_prep, fastener, print_fix, label, lighten,
+stdpart seats) save a checkpoint first (`freecad_checkpoint` restores it); turn off with the profile setting
+`auto_checkpoint: false`.
 
 Strength results assume solid material (enough perimeters / infill) and are a quick linear check,
 not a certification; aim for a safety factor of 3 or more on printed parts. Material values are typical
@@ -111,7 +125,7 @@ Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token d
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/ready_headless.py`, `../tests/designs_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License

@@ -26,7 +26,8 @@ windowless work, then switch back with `'gui'`).
    - moving parts: `freecad_motion` (hinge/slider travel; print-in-place clearance)
    - rebuilt from a reference mesh: `freecad_compare_mesh`
 5. One `freecad_view` (small size, 1–2 views) to confirm visually.
-6. Deliver: for printing, `freecad_orient` → `freecad_print_prep` (print copy + engineered snap-off supports),
+6. Before printing: `freecad_ready` (one verdict per part) and `freecad_print_fix` for what it flags.
+   Deliver: for printing, `freecad_orient` → `freecad_print_prep` (print copy + engineered snap-off supports),
    then `freecad_export` the `_print` and `_print_supports` objects together. Too big for the bed: `freecad_split`
    (press-fit pins). Several colours: `freecad_color_split` (single-colour pieces, glue-free inlays/pins); `freecad_drawing` for a
    dimensioned PDF; `freecad_doc save`. Assembly/usage docs: `freecad_illustrate` (parts + hardware/tools sheet,
@@ -34,6 +35,9 @@ windowless work, then switch back with `'gui'`).
    print list) - pass the real hardware and tools. Several colours printed at once: `freecad_export(format='3mf', colors=true)`.
 
 ## Printed fits
+- Design helpers: `freecad_mechanism` (gears, hinges, flexures, springs), `freecad_lighten` (patterns/vents),
+  `freecad_stdpart` / `freecad_enclosure` (bearings, magnets, servos, boards), `freecad_label` (text, stamps, QR),
+  `freecad_mesh_import` (downloaded STLs), `freecad_variants` (size variants), `freecad_render` (presentation images).
 - Screws, threads, nut traps, heat-set inserts, snap hooks: `freecad_fastener` (sized from the profile; threads
   below M5 print poorly - prefer inserts; snap hooks report strain vs the material limit).
 - Clearances come from the print profile: `freecad_print_profile` (show) and `cl.fit('press'|'snug'|'slide'|'loose')`,
