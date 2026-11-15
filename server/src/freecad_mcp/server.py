@@ -33,6 +33,7 @@ once to check visually -> fix -> save with freecad_doc.
   cl.thread/tapped_hole/screw_hole/nut_trap/insert_hole/selftap_hole/snap_hook in code).
 - Mechanisms: freecad_mechanism (gears, print-in-place hinges, living hinges, flexures, springs).
 - Lightweighting / vents: freecad_lighten (pattern cut-outs, optional before/after strength).
+- Standard parts / enclosures: freecad_stdpart (bearings, magnets, servos, boards; seats), freecad_enclosure.
 - Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
@@ -556,6 +557,34 @@ async def freecad_lighten(object: str, at: str = "faces >Z",
     runs FEM before and after and flags a safety factor under 3. In place + auto checkpoint."""
     return await _call("lighten", 900, object=object, at=at, pattern=pattern, cell=cell, wall=wall, margin=margin,
                        depth=depth, slot_len=slot_len, angle=angle, check=check, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_stdpart(kind: Literal["bearing", "magnet", "servo", "board"], size: str | None = None,
+                          at: list[float] | None = None, axis: str = "z", mode: Literal["part", "seat"] = "part",
+                          target: str | None = None, fit: Literal["press", "snug", "slide", "loose"] | None = None,
+                          name: str | None = None, doc: str | None = None) -> str:
+    """Standard parts. mode=part: simplified reference model (transparent grey, not for printing);
+    mode=seat: cut its seat into `target` at `at`, axis INTO the material: bearing seat (outer d + press fit,
+    with a through relief), magnet pocket, servo pocket with self-tap holes. size: bearing 623 624 625 626
+    608 688 6000 6001 6200 6201 6800 6804 MR85 MR105 LM8UU; magnet 'DxH' ('6x3'); servo sg90 mg996r; board
+    rpi4 rpi5 rpi-zero arduino-uno arduino-nano esp32-devkitc. Typical datasheet dimensions - measure yours."""
+    return await _call("stdpart", 300, kind=kind, size=size, at=at, axis=axis, mode=mode, target=target, fit=fit,
+                       name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_enclosure(board: str | None = None, size: list[float] | None = None, wall: float = 2.0,
+                            floor: float = 2.0, clearance: float = 1.5, standoff: float = 5.0, headroom: float = 3.0,
+                            lid: Literal["screw", "snap"] = "screw", vents: bool = False, corner_r: float = 3.0,
+                            name: str = "Enclosure", doc: str | None = None) -> str:
+    """Enclosure for a board (rpi4 rpi5 rpi-zero arduino-uno arduino-nano esp32-devkitc) or an inside size
+    [x, y, height]: base with rounded corners, standoffs with heat-set insert holes at the board's mounting
+    holes, port cut-outs for its edge connectors, lid with a locating lip, fixed by 4 M3 screws through corner
+    ears into inserts (lid='screw') or by 4 snap hooks into wall windows (lid='snap'); optional vent slots.
+    Makes <name>_base, <name>_lid and a reference <name>_board; checks overlaps; lists the hardware."""
+    return await _call("enclosure", 300, board=board, size=size, wall=wall, floor=floor, clearance=clearance,
+                       standoff=standoff, headroom=headroom, lid=lid, vents=vents, corner_r=corner_r, name=name, doc=doc)
 
 
 @mcp.tool()

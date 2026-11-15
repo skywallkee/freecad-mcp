@@ -63,6 +63,26 @@ try:
     step("grid with strength before/after", "lighten", ["grid cut-outs", "strength: safety factor"],
          object="Panel2", at="faces >Z", pattern="grid", cell=15,
          check={"fixed": ["<X"], "loads": [{"ref": ">X", "force": 20, "dir": "-z"}]})
+    # --- standard parts + enclosures
+    step("bearing reference part", "stdpart", ["bearing 608 (d8 x D22 x 7)"], kind="bearing", size="608",
+         at=[0, 700, 0])
+    call("exec", {"code": "cl.show(Part.makeBox(40, 40, 10, V(100, 700, 0)), 'Block')"})
+    step("bearing seat", "stdpart", ["bearing 608 seat d22.1", "through-relief"], kind="bearing", size="608",
+         mode="seat", target="Block", at=[120, 720, 10], axis="-z")
+    step("magnet pocket", "stdpart", ["magnet pocket d6.1"], kind="magnet", size="6x3", mode="seat", target="Block",
+         at=[105, 705, 10], axis="-z")
+    step("servo pocket", "stdpart", ["servo SG90 pocket"], kind="servo", size="sg90", mode="seat", target="Block",
+         at=[120, 720, 0], axis="z")
+    step("unknown bearing", "stdpart", ["unknown; known:"], kind="bearing", size="9999")
+    step("Pi 4 enclosure, screw lid", "enclosure", ["7 port cut-outs", "4 standoffs", "board/base overlap 0 mm3",
+                                                     "lid/base overlap 0 mm3", "M2.5"], board="rpi4", name="Pi")
+    step("Uno enclosure, snap lid", "enclosure", ["snap hooks", "-> OK", "board/base overlap 0 mm3"],
+         board="arduino-uno", lid="snap", name="Uno")
+    step("custom box with vents", "enclosure", ["custom enclosure", "vent slots"], size=[60, 40, 20], vents=True,
+         name="Box")
+    step("enclosure parts valid", "exec", ["True"], code="all(App.ActiveDocument.getObject(n).Shape.isValid() and "
+         "len(App.ActiveDocument.getObject(n).Shape.Solids) == 1 for n in ['Pi_base', 'Pi_lid', 'Uno_base', 'Uno_lid', "
+         "'Box_base', 'Box_lid', 'Block'])")
     print("FAILS: %d" % fails)
 finally:
     proc.kill()
