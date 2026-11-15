@@ -252,7 +252,27 @@ def _fillet_suggestions(s, thr):
 
 # ------------------------------------------------------------------ engineered supports
 
-def _anchored_bridge(part, face, max_bridge):
+def _inside_tester(shape):
+    """Fast point-in-solid test. Exact B-rep classification for simple shapes; for detailed ones (e.g. converted
+    meshes, thousands of faces, ~0.1 s per B-rep query) a ray test on a mesh: cast down, inside if the first
+    facet hit faces downwards (we are leaving the material)."""
+    if len(shape.Faces) <= 300:
+        return lambda p: shape.isInside(p, 1e-6, True)
+    import MeshPart
+    m = MeshPart.meshFromShape(Shape=shape, LinearDeflection=max(shape.BoundBox.DiagonalLength / 800.0, 0.02),
+                               AngularDeflection=0.2, Relative=False)
+    facets = m.Facets
+
+    def inside(p):
+        hit = m.nearestFacetOnRay((p.x, p.y, p.z), (0.0, 0.0, -1.0))
+        if not hit:
+            return False
+        idx = list(hit.keys())[0]
+        return facets[idx].Normal[2] < 0
+    return inside
+
+
+def _anchored_bridge(part, face, max_bridge, inside=None):
     """A flat downward face the printer can bridge: two parallel straight edges at most max_bridge
     apart, each with material directly below and just outside it (a wall to bridge from)."""
     b = face.BoundBox
@@ -270,7 +290,7 @@ def _anchored_bridge(part, face, max_bridge):
         if out.dot(V(mid.x - c.x, mid.y - c.y, 0)) < 0:
             out = out * -1
         probe = mid + out * 0.3 - Z * 0.5
-        if part.isInside(probe, 1e-6, True):
+        if (inside(probe) if inside else part.isInside(probe, 1e-6, True)):
             anchored.append((mid, dirv))
     for i in range(len(anchored)):
         for j in range(i + 1, len(anchored)):
@@ -288,13 +308,16 @@ def _flat_support(shape_rot, layer, max_bridge):
     """(area, volume) of flat downward faces that cannot bridge, for an already rotated shape."""
     zmin = shape_rot.BoundBox.ZMin
     area = vol = 0.0
+    inside = None
     for f in shape_rot.Faces:
         if not isinstance(f.Surface, Part.Plane) or f.BoundBox.ZMax < zmin + layer + 1e-6:
             continue
         n = cl._normal(f)
         if n is None or n.z >= -0.98:
             continue
-        if _anchored_bridge(shape_rot, f, max_bridge):
+        if inside is None:
+            inside = _inside_tester(shape_rot)
+        if _anchored_bridge(shape_rot, f, max_bridge, inside):
             continue
         area += f.Area
         vol += f.Area * abs(n.z) * (f.CenterOfMass.z - zmin)

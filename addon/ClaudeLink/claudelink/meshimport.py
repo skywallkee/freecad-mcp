@@ -128,14 +128,46 @@ def _round_features(m, min_facets=6):
             hole = (foot - p0).dot(V(*N[f0])) > 0
             found.append(("hole" if hole else "boss", r, c, V(*ax), L, err))
     out = []
-    for f in found:      # one entry per feature
-        if not any(abs(f[1] - g[1]) < 0.05 and (f[2] - g[2]).Length < 0.5 for g in out):
+    for f in found:      # one entry per feature: same radius on the same axis line = one cylinder in pieces
+        dup = None
+        for k, g in enumerate(out):
+            if f[0] == g[0] and abs(f[1] - g[1]) < 0.05 and abs(abs(f[3].dot(g[3])) - 1) < 1e-3:
+                dv = f[2] - g[2]
+                if (dv - g[3] * dv.dot(g[3])).Length < 0.5:
+                    dup = k
+                    break
+        if dup is None:
             out.append(f)
+        else:
+            g = out[dup]
+            out[dup] = (g[0], g[1], g[2], g[3], g[4] + f[4], max(g[5], f[5]))
     return out
 
 
+class _Quiet:
+    """Mute FreeCAD's console while OCC/TNP spams 'unresolved duplicate element mapping' per triangle."""
+    def __enter__(self):
+        self.saved = []
+        for obs in ("Console", "Report", "ReportOutput", "File"):
+            for typ in ("Log", "Wrn"):
+                try:
+                    self.saved.append((obs, typ, FreeCAD.Console.GetStatus(obs, typ)))
+                    FreeCAD.Console.SetStatus(obs, typ, False)
+                except Exception:
+                    pass
+        return self
+
+    def __exit__(self, *a):
+        for obs, typ, st in self.saved:
+            try:
+                FreeCAD.Console.SetStatus(obs, typ, bool(st))
+            except Exception:
+                pass
+        return False
+
+
 def mesh_import(path=None, mesh=None, name=None, repair=True, solid=True, features=True, max_facets=60000,
-                scale=1.0, doc=None):
+                scale=1.0, doc=None, solid_facets=8000):
     """See the MCP tool."""
     import Mesh
     d = _doc(doc)
@@ -165,20 +197,43 @@ def mesh_import(path=None, mesh=None, name=None, repair=True, solid=True, featur
     s0 = _stats(m)
     out.append("as loaded: " + _stat_line(s0))
     if repair:
-        for fn, args in (("removeDuplicatedPoints", ()), ("removeDuplicatedFacets", ()), ("removeInvalidPoints", ()),
-                         ("fixDegenerations", (0.0,)), ("removeNeedles", (0.0001,)), ("fixSelfIntersections", ()),
-                         ("removeNonManifolds", ()), ("removeNonManifoldPoints", ()), ("harmonizeNormals", ()),
-                         ("fillupHoles", (1000,)), ("fixIndices", ())):
-            try:
-                getattr(m, fn)(*args)
-            except Exception:
-                pass
+        def run(mesh, steps):
+            for fn, args in steps:
+                try:
+                    getattr(mesh, fn)(*args)
+                except Exception:
+                    pass
+        gentle = (("removeDuplicatedPoints", ()), ("removeDuplicatedFacets", ()), ("removeInvalidPoints", ()),
+                  ("fixDegenerations", (0.0,)), ("removeNeedles", (0.0001,)), ("fixSelfIntersections", ()),
+                  ("removeNonManifolds", ()), ("removeNonManifoldPoints", ()), ("harmonizeNormals", ()),
+                  ("fillupHoles", (1000,)), ("fixIndices", ()))
+        strong = (("removeFoldsOnSurface", ()), ("fixSelfIntersections", ()), ("removeNonManifolds", ()),
+                  ("fillupHoles", (1000,)), ("harmonizeNormals", ()), ("fixIndices", ()))
+        orig = m.copy()
+        run(m, gentle)
         if m.countComponents() > 1:
             small = max(20, int(0.002 * m.CountFacets))
             try:
                 m.removeComponents(small)        # loose debris
             except Exception:
                 pass
+        # removing self-intersecting facets opens holes that hole-filling closes cleanly on some meshes and
+        # not on others: try each level and keep the best (watertight > no self-intersections > no
+        # degenerate facets > fewest facets changed) - never worse than the file as loaded
+        cands = [("as loaded", orig), ("gentle", m)]
+        m2 = m.copy()
+        run(m2, strong)
+        cands.append(("strong", m2))
+        m3 = orig.copy()            # one pass: drop intersecting/folded facets first, fill holes only at the end
+        run(m3, [x for x in gentle if x[0] != "fillupHoles"] + list(strong))
+        cands.append(("full", m3))
+
+        def score(mm):
+            st = _stats(mm)
+            return (not st["solid"], st["selfint"], st["degenerate"], st["nonmanifold"],
+                    abs(mm.CountFacets - orig.CountFacets))
+        best_name, m = min(cands, key=lambda c: score(c[1]))
+        repair_level = best_name
         try:
             if m.Volume < 0:
                 m.flipNormals()
@@ -186,7 +241,11 @@ def mesh_import(path=None, mesh=None, name=None, repair=True, solid=True, featur
             pass
         s1 = _stats(m)
         b1 = m.BoundBox
-        out.append("repaired: " + _stat_line(s1) + " - %sx%sx%s mm" % (_f(b1.XLength), _f(b1.YLength), _f(b1.ZLength)))
+        left = [k for k in ("selfint", "degenerate", "nonmanifold") if s1[k]]
+        out.append("repaired (%s pass kept): " % repair_level + _stat_line(s1) + " - %sx%sx%s mm" % (_f(b1.XLength), _f(b1.YLength), _f(b1.ZLength)) +
+                   ("; the remaining %s could not be removed automatically - the solid below is checked separately"
+                    % "/".join({"selfint": "self-intersections", "degenerate": "degenerate facets",
+                                "nonmanifold": "non-manifold edges"}[k] for k in left) if left else ""))
     if m.CountFacets > max_facets:
         n0 = m.CountFacets
         try:
@@ -233,24 +292,32 @@ def mesh_import(path=None, mesh=None, name=None, repair=True, solid=True, featur
     if solid:
         t1 = time.time()
         try:
-            sh = Part.Shape()
-            sh.makeShapeFromMesh(m.Topology, 0.05)
-            try:
-                sh.sewShape()
-            except Exception:
-                pass
-            so = Part.Solid(Part.Shell(sh.Faces))
-            if so.Volume < 0:
-                so.reverse()
-            try:
-                so = so.removeSplitter()          # merges coplanar triangles into real planar faces
-            except Exception:
-                pass
+            ms = m.copy()
+            note = ""
+            if ms.CountFacets > solid_facets:      # B-rep with one face per triangle grows superlinearly
+                n0 = ms.CountFacets
+                ms.decimate(0.05, 1.0 - float(solid_facets) / n0)
+                note = " (from a %d-facet copy reduced to %d, 0.05 mm tolerance; the full mesh stays in %s)" % (
+                    n0, ms.CountFacets, mo.Name)
+            with _Quiet():
+                sh = Part.Shape()
+                sh.makeShapeFromMesh(ms.Topology, 0.05)
+                try:
+                    sh.sewShape()
+                except Exception:
+                    pass
+                so = Part.Solid(Part.Shell(sh.Faces))
+                if so.Volume < 0:
+                    so.reverse()
+                try:
+                    so = so.removeSplitter()          # merges coplanar triangles into real planar faces
+                except Exception:
+                    pass
             ok = so.isValid()
             po = cl.show(so, base, doc=d)
-            out.append("solid %s: %s, %d faces after merging flat areas, volume %s cm3 (%.1fs)%s" % (
+            out.append("solid %s: %s, %d faces after merging flat areas, volume %s cm3 (%.1fs)%s%s" % (
                 po.Name, "valid" if ok else "INVALID - booleans may fail; freecad_check_geometry", len(so.Faces),
-                _f(so.Volume / 1000.0), time.time() - t1,
+                _f(so.Volume / 1000.0), time.time() - t1, note,
                 "" if s0["solid"] or repair else " - mesh was open, solid may be broken"))
             out.append("curved areas stay triangulated: model new features as separate solids and fuse/cut them")
         except Exception as e:

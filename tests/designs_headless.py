@@ -97,7 +97,7 @@ try:
         "m2 = MeshPart.meshFromShape(Shape=Part.makeBox(0.04, 0.03, 0.005), LinearDeflection=0.0001)",
         "m2.write(%r)" % stl_m])})
     step("broken STL repaired and converted", "mesh_import",
-         ["as loaded:", "open (holes in the surface)", "repaired: ", "clean, watertight", "solid broken: valid",
+         ["as loaded:", "open (holes in the surface)", "repaired (", "clean, watertight", "solid broken: valid",
           "hole d6", "boss d8", "flat faces"], path=stl)
     step("solid usable for booleans", "exec", ["valid, 1 solids"],
          code="cl.check(App.ActiveDocument.broken.Shape.cut(Part.makeBox(5, 5, 50, V(-1, -1, -1))))")

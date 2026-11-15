@@ -198,11 +198,27 @@ def strength(object, fixed, loads, up="+z", material=None, mesh_size=None, doc=N
             work = getattr(fea, "working_dir", None)
             import contextlib
             import io
-            with contextlib.redirect_stdout(io.StringIO()):   # femtools prints its internals
-                ok = fea.run()
-            work = getattr(fea, "working_dir", work)
-            res = [x for x in an.Group if x.isDerivedFrom("Fem::FemResultObject")]
-            if not ok or not res:
+            refined = 0
+            while True:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):   # femtools prints its internals
+                    ok = fea.run()
+                work = getattr(fea, "working_dir", work)
+                res = [x for x in an.Group if x.isDerivedFrom("Fem::FemResultObject")]
+                if ok and res:
+                    break
+                log = buf.getvalue() + str(getattr(fea, "ccx_stdout", "") or "")
+                # curved/helical parts: 2nd-order elements can come out inverted on a coarse mesh -> refine
+                if "jacobian" in log.lower() and refined < 2:
+                    refined += 1
+                    h *= 0.6
+                    mesh.CharacteristicLengthMax = h
+                    GmshTools(mesh).create_mesh()
+                    fea = ccxtools.FemToolsCcx(an, solver)
+                    fea.purge_results()
+                    continue
+                if "jacobian" in log.lower():
+                    raise UserError("CalculiX: distorted mesh elements even at %s mm - try mesh_size smaller" % fmt(h))
                 raise UserError("CalculiX failed (is every load path connected to a fixed face?)")
             r = res[0]
             nodes = r.Mesh.FemMesh.Nodes

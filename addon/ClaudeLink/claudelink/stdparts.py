@@ -16,6 +16,7 @@ from .snapshot import fmt
 
 V = FreeCAD.Vector
 
+# widths are the shielded (ZZ/2RS) versions where they differ (688, MR85, MR105)
 BEARINGS = {"623": (3, 10, 4), "624": (4, 13, 5), "625": (5, 16, 5), "626": (6, 19, 6), "608": (8, 22, 7),
             "688": (8, 16, 5), "6000": (10, 26, 8), "6001": (12, 28, 8), "6200": (10, 30, 9), "6201": (12, 32, 10),
             "6800": (10, 19, 5), "6804": (20, 32, 7), "MR85": (5, 8, 2.5), "MR105": (5, 10, 4), "LM8UU": (8, 15, 24)}
@@ -23,10 +24,10 @@ BEARINGS = {"623": (3, 10, 4), "624": (4, 13, 5), "625": (5, 16, 5), "626": (6, 
 # (edge, position along the edge from the board corner, width, height, z above the board top)
 BOARDS = {
     "rpi4": {"size": (85, 56, 1.4), "holes": [(3.5, 3.5, 2.7), (61.5, 3.5, 2.7), (3.5, 52.5, 2.7), (61.5, 52.5, 2.7)],
-             "height": 16.5, "insert": "M2.5", "conn": [
-                 ("front", 11.2, 9.0, 3.3, 0.0, "USB-C power"), ("front", 26.0, 7.0, 3.5, 0.0, "micro-HDMI 0"),
-                 ("front", 39.5, 7.0, 3.5, 0.0, "micro-HDMI 1"), ("front", 53.5, 6.5, 6.5, 0.0, "audio"),
-                 ("right", 9.0, 13.5, 15.6, 0.0, "USB 2"), ("right", 27.0, 13.5, 15.6, 0.0, "USB 3"),
+             "height": 16.5, "insert": "M2.5", "conn": [      # official mechanical drawing (heights = Z above board)
+                 ("front", 11.2, 9.0, 3.2, 0.0, "USB-C power"), ("front", 26.0, 7.0, 3.0, 0.0, "micro-HDMI 0"),
+                 ("front", 39.5, 7.0, 3.0, 0.0, "micro-HDMI 1"), ("front", 54.0, 6.5, 6.0, 0.0, "audio"),
+                 ("right", 9.0, 13.5, 16.0, 0.0, "USB 2"), ("right", 27.0, 13.5, 16.0, 0.0, "USB 3"),
                  ("right", 45.75, 16.0, 13.5, 0.0, "Ethernet")]},
     "rpi5": {"size": (85, 56, 1.4), "holes": [(3.5, 3.5, 2.7), (61.5, 3.5, 2.7), (3.5, 52.5, 2.7), (61.5, 52.5, 2.7)],
              "height": 16.5, "insert": "M2.5", "conn": [
@@ -39,20 +40,21 @@ BOARDS = {
                  "height": 5.0, "insert": "M2.5", "conn": [
                      ("front", 12.4, 11.2, 3.4, 0.0, "mini-HDMI"), ("front", 41.4, 7.5, 2.8, 0.0, "micro-USB data"),
                      ("front", 54.0, 7.5, 2.8, 0.0, "micro-USB power")]},
-    "arduino-uno": {"size": (68.6, 53.3, 1.6), "holes": [(14.0, 2.5, 3.2), (15.3, 50.7, 3.2), (66.1, 7.6, 3.2),
-                                                         (66.1, 35.5, 3.2)],
+    "arduino-uno": {"size": (68.58, 53.34, 1.6), "holes": [(13.97, 2.54, 3.2), (15.24, 50.8, 3.2), (66.04, 7.62, 3.2),
+                                                           (66.04, 35.56, 3.2)],     # A000066 datasheet (mil grid)
                     "height": 15.0, "insert": "M3", "conn": [
                         ("left", 38.1, 12.0, 11.0, 0.0, "USB-B"), ("left", 7.6, 9.0, 11.0, 0.0, "DC jack")]},
-    "arduino-nano": {"size": (43.2, 17.8, 1.6), "holes": [(1.3, 1.3, 1.7), (41.9, 1.3, 1.7), (1.3, 16.5, 1.7),
-                                                          (41.9, 16.5, 1.7)],
-                     "height": 6.0, "insert": "M2", "conn": [("left", 8.9, 8.0, 4.0, 0.0, "mini/USB-C")]},
-    "esp32-devkitc": {"size": (54.4, 27.9, 1.6), "holes": [], "height": 5.0, "insert": None,
-                      "conn": [("left", 13.95, 8.0, 3.2, 0.0, "micro-USB / USB-C")]},
+    "arduino-nano": {"size": (43.2, 18.0, 1.6), "holes": [(1.28, 1.38, 1.8), (41.92, 1.38, 1.8), (1.28, 16.62, 1.8),
+                                                          (41.92, 16.62, 1.8)],      # A000005 datasheet
+                     "height": 6.0, "insert": "M2", "conn": [("left", 9.0, 8.0, 4.0, 0.0, "mini/USB-C")]},
+    # PCB 48.26 long + the module antenna overhanging 6.04 at x=max: 54.3 envelope (Espressif dimension drawing)
+    "esp32-devkitc": {"size": (54.3, 27.94, 1.6), "holes": [], "height": 5.0, "insert": None,
+                      "conn": [("left", 13.97, 8.0, 3.2, 0.0, "micro-USB / USB-C")]},
 }
-SERVOS = {  # body (x, y, z), tab length total, tab thickness, tab top height, hole spacing, hole d, shaft offset
+SERVOS = {  # sg90 body is a measured clone size (datasheet says 22.2 x 11.8); body (x, y, z), tab length total, tab thickness, tab top height, hole spacing, hole d, shaft offset
     "sg90": {"body": (22.5, 12.2, 22.7), "tab": 32.2, "tab_t": 2.5, "tab_z": 18.5, "holes": 27.8, "hole_d": 2.0,
              "shaft": 5.9, "boss": (11.8, 4.0)},
-    "mg996r": {"body": (40.7, 19.7, 37.0), "tab": 54.5, "tab_t": 2.5, "tab_z": 28.0, "holes": 49.5, "hole_d": 4.2,
+    "mg996r": {"body": (40.7, 19.7, 36.6), "tab": 53.6, "tab_t": 2.5, "tab_z": 29.1, "holes": 49.5, "hole_d": 4.2,
                "shaft": 10.0, "boss": (20.0, 5.9)},
 }
 

@@ -273,7 +273,8 @@ def mechanism(kind, params=None, at=None, name=None, doc=None):
         lim = _strain_limit(mat)
         dmax = lim * L * L / (3 * t)
         out.append("%s: parallelogram flexure, two %sx%sx%s mm blades %s mm apart" % (o.Name, _f(L), _f(t), _f(w), _f(gap)))
-        out.append("stiffness %s N/mm along Y (%s, E %s MPa); travel up to +-%s mm before %s%% strain" % (
+        out.append("stiffness ~%s N/mm along Y (%s, E %s MPa; beam theory - FEM of this geometry is ~10%% softer); "
+                   "travel up to +-%s mm before %s%% strain" % (
             _f(k, 2), mat, _f(E, 0), _f(dmax), _f(100 * lim, 1)))
         out.append("print with the blades vertical (Z = width) so each blade is solid perimeters, not layers")
     elif kind == "spring":
@@ -308,7 +309,8 @@ def mechanism(kind, params=None, at=None, name=None, doc=None):
         travel = L - (nco + 2) * a
         out.append("%s: compression spring d%s, %s mm square wire, %s coils, free length %s (closed flat ends)" % (
             o.Name, _f(D), _f(a), _f(nco, 1), _f(s.BoundBox.ZLength)))
-        out.append("rate ~%s N/mm (%s, G %s MPa); solid at %s mm travel - use <= %s mm (40%%) for a long life" % (
+        out.append("rate ~%s N/mm (%s, G %s MPa; estimate - FEM gives ~15%% stiffer); solid at %s mm travel - use "
+                   "<= %s mm (40%%) for a long life" % (
             _f(k, 3), mat, _f(G, 0), _f(travel), _f(0.4 * travel)))
         if mat.upper() == "PLA":
             out.append("note: PLA springs creep and lose force under constant load - PETG, nylon or TPU last longer")

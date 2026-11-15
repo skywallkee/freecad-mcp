@@ -88,12 +88,50 @@ def _sharp_corners(faces, max_deg=120.0):
             pa = va[0] if (va[1] - c).Length < 1e-6 else va[1]
             pb = vb[0] if (vb[1] - c).Length < 1e-6 else vb[1]
             u, v = pa - c, pb - c
-            if u.Length < 1e-9 or v.Length < 1e-9:
+            if u.Length < 1.0 or v.Length < 1.0:    # ignore tessellation steps; a corner needs real edges
                 continue
             ang = math.degrees(u.getAngle(v))
             mid = c + (u.normalize() + v.normalize()) * 0.05
             if ang < max_deg and f.isInside(mid, 1e-6, True):      # convex (interior inside the face)
                 out.append((c, ang))
+    return out
+
+
+def _footprint_corners(srot, max_deg=120.0, min_edge=1.0):
+    """Convex corners of the footprint outline, from a thin slice just above the bed; tessellation steps
+    (short or nearly straight segments) are merged first, so converted meshes don't count every triangle."""
+    zmin = srot.BoundBox.ZMin
+    try:
+        wires = srot.slice(V(0, 0, 1), zmin + 0.05)
+    except Exception:
+        return []
+    out = []
+    for w in wires:
+        try:
+            pts = [v.Point for v in w.OrderedVertexes]
+        except Exception:
+            continue
+        if len(pts) < 3:
+            continue
+        changed = True
+        while changed and len(pts) > 3:          # drop points on short or nearly straight steps
+            changed = False
+            for i in range(len(pts)):
+                a, b, c = pts[i - 1], pts[i], pts[(i + 1) % len(pts)]
+                u, v = a - b, c - b
+                if u.Length < 1e-9 or v.Length < 1e-9 or math.degrees(u.getAngle(v)) > 165 or                         (min(u.Length, v.Length) < min_edge and math.degrees(u.getAngle(v)) > 100):
+                    del pts[i]
+                    changed = True
+                    break
+        n = len(pts)
+        area2 = sum(pts[i].x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * pts[i].y for i in range(n))
+        for i in range(n):
+            a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]
+            u, v = a - b, c - b
+            cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+            ang = math.degrees(u.getAngle(v))
+            if ang < max_deg and cross * area2 > 0:      # convex turn in the outline's own orientation
+                out.append((b, ang))
     return out
 
 
@@ -112,7 +150,8 @@ def warp_risk(srot, material, prof):
         w = min(fb.XLength, fb.YLength)
     else:
         L, w = 0.0, 0.0
-    corners = _sharp_corners(faces)
+    corners = _footprint_corners(srot)
+
     score = k * (L / 100.0) * (1 + 0.08 * min(len(corners), 8))
     level = "high" if score >= 0.7 else "medium" if score >= 0.3 else "low"
     notes = []

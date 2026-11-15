@@ -122,7 +122,7 @@ def thread_rod(size="M8", length=10.0, fit="slide", material=None, pitch=None, c
     c = _prof_fit(fit, material) if fit else 0.0
     H = 0.8660254 * P
     r_crest = D / 2 - c
-    r_root = D / 2 - 0.625 * H - c                 # ISO minor of the bolt (5/8 H below major)
+    r_root = D / 2 - 0.61343 * P - c               # ISO bolt minor d3 = D - 1.22687 P (clears a real nut's minor)
     rod = _cyl(r_root + 0.01, 0, length).fuse(_helix_thread(r_root, r_crest, P, length))
     env_pts = [(0, 0), (r_crest - 0.6 * H, 0), (r_crest + 0.01, 0.6 * H), (r_crest + 0.01, length - 0.6 * H),
                (r_crest - 0.6 * H, length), (0, length)] if chamfer else \
