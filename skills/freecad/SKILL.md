@@ -1,6 +1,6 @@
 ---
 name: freecad
-description: Workflow for designing, checking and preparing 3D-printable parts in a live FreeCAD session through the freecad MCP (ClaudeLink, `freecad_*` tools). Use it whenever a task involves FreeCAD, CAD modelling, parametric project folders, STL/STEP/3MF files, or making something to 3D print - enclosures, brackets, gears, hinges, labels, multi-colour or too-big prints, strength or fit questions, assembly instructions or renders - even if FreeCAD isn't named.
+description: Workflow and ground rules for designing, checking and preparing 3D-printable parts in a live FreeCAD session through the freecad MCP (ClaudeLink). Load it before your first freecad_* tool call - it holds the rules that protect the user's open documents and the checks a part must pass. Use it whenever a task involves FreeCAD, CAD modelling, parametric project folders, STL/STEP/3MF files, or making something to 3D print - enclosures, brackets, gears, hinges, labels, multi-colour or too-big prints, strength or fit questions, assembly instructions or renders - even if FreeCAD isn't named. Not for how-to questions about other programs (Blender, Fusion 360, OpenSCAD code, Inkscape), slicer settings or printer hardware faults.
 ---
 
 # FreeCAD through the freecad MCP
