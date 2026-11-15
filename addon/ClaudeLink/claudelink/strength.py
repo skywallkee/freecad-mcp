@@ -198,27 +198,42 @@ def strength(object, fixed, loads, up="+z", material=None, mesh_size=None, doc=N
             work = getattr(fea, "working_dir", None)
             import contextlib
             import io
-            refined = 0
+            refined, order = 0, "2nd order"
             while True:
                 buf = io.StringIO()
+                crash = ""
                 with contextlib.redirect_stdout(buf):   # femtools prints its internals
-                    ok = fea.run()
+                    try:
+                        ok = fea.run()
+                    except Exception:
+                        # GUI: femtools tries to highlight the inverted elements and trips over the scratch doc
+                        import traceback
+                        ok, crash = False, traceback.format_exc()
                 work = getattr(fea, "working_dir", work)
                 res = [x for x in an.Group if x.isDerivedFrom("Fem::FemResultObject")]
                 if ok and res:
                     break
-                log = buf.getvalue() + str(getattr(fea, "ccx_stdout", "") or "")
+                log = buf.getvalue() + str(getattr(fea, "ccx_stdout", "") or "") + crash
                 # curved/helical parts: 2nd-order elements can come out inverted on a coarse mesh -> refine
                 if "jacobian" in log.lower() and refined < 2:
                     refined += 1
-                    h *= 0.6
+                    if refined == 1:
+                        if hasattr(mesh, "SecondOrderLinear"):
+                            mesh.SecondOrderLinear = True      # straight-edged elements (threads, helices)
+                        h *= 0.7
+                    else:                                       # last resort: linear elements cannot invert
+                        mesh.ElementOrder = "1st"
+                        order = "1st order - stiffer, real peak stress can be ~25% higher"
+                        h *= 0.6
                     mesh.CharacteristicLengthMax = h
                     GmshTools(mesh).create_mesh()
                     fea = ccxtools.FemToolsCcx(an, solver)
                     fea.purge_results()
                     continue
                 if "jacobian" in log.lower():
-                    raise UserError("CalculiX: distorted mesh elements even at %s mm - try mesh_size smaller" % fmt(h))
+                    raise UserError("CalculiX: distorted mesh elements even at %s mm with linear elements - usually thread or "
+                                    "helix detail: simulate a copy without it (plain hole/rod), or try a smaller "
+                                    "mesh_size" % fmt(h))
                 raise UserError("CalculiX failed (is every load path connected to a fixed face?)")
             r = res[0]
             nodes = r.Mesh.FemMesh.Nodes
@@ -256,8 +271,8 @@ def strength(object, fixed, loads, up="+z", material=None, mesh_size=None, doc=N
             lines.append("%s: %s N total on %d load(s), fixed %s; material %s (E %s MPa, strength %s in-layer / %s across "
                          "layers, %s)" % (o.Name, fmt(total), len(load_specs), ",".join(fix_names), mname, fmt(mp["E"]),
                                           fmt(mp["xy"]), fmt(mp["z"]), msrc))
-            lines.append("mesh: %d nodes, element size %s mm (2nd order); solve %.1fs" % (
-                len(pts), fmt(round(h, 2)), time.time() - t0 - t_mesh))
+            lines.append("mesh: %d nodes, element size %s mm (%s); solve %.1fs" % (
+                len(pts), fmt(round(h, 2)), order, time.time() - t0 - t_mesh))
             lines.append("max von Mises %s MPa at %s on %s -> safety factor %s (in-layer)" % (
                 fmt(round(vm[i_vm], 2)), _vec(pts[i_vm]), _face_desc(shape, pts[i_vm]), fmt(round(sf_xy, 2))))
             if layer[i_l] > 0:

@@ -43,6 +43,19 @@ class Executor:
         self.jobs = queue.Queue()
         self.busy = False
         self.current = None
+        self.main_ident = None
+        self.started = 0.0
+
+    def cancel(self):
+        """Interrupt the running job from the socket thread: raises KeyboardInterrupt in the main thread, which
+        lands as soon as the job is back in Python code (between geometry kernel calls)."""
+        if not self.current or not self.main_ident:
+            return {"ok": True, "result": "nothing is running"}
+        import ctypes
+        n = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(self.main_ident),
+                                                       ctypes.py_object(KeyboardInterrupt))
+        return {"ok": True, "result": "interrupt sent to %s (running %.0fs)%s" % (
+            self.current, time.time() - self.started, "" if n == 1 else " - could not reach the main thread")}
 
     def submit(self, fn, timeout):
         box = {}
@@ -63,8 +76,12 @@ class Executor:
                     fn, box, done = self.jobs.get_nowait()
                 except queue.Empty:
                     return
+                self.main_ident = threading.get_ident()
+                self.started = time.time()
                 try:
                     box["resp"] = {"ok": True, "result": fn()}
+                except KeyboardInterrupt:
+                    box["resp"] = {"ok": False, "error": "cancelled (freecad_cancel)"}
                 except Exception as e:  # handler bug or user-facing error
                     msg = str(e) if isinstance(e, UserError) else traceback.format_exc()
                     box["resp"] = {"ok": False, "error": msg}
@@ -91,7 +108,9 @@ class _Handler(socketserver.StreamRequestHandler):
                 method = req.get("method")
                 params = req.get("params") or {}
                 fn = srv.methods.get(method)
-                if fn is None:
+                if method == "cancel":          # handled here, off the main thread, so it works while busy
+                    resp = srv.executor.cancel()
+                elif fn is None:
                     resp = {"ok": False, "error": "unknown method %r" % method}
                 else:
                     def job(fn=fn, params=params, method=method):

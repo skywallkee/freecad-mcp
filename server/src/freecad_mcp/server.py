@@ -17,6 +17,7 @@ once to check visually -> fix -> save with freecad_doc.
   the value of a trailing expression is returned. Each call is one undo step; on error the changes
   are rolled back unless rollback_on_error=false.
 - Prefer freecad_run_file with overrides for parametric build scripts instead of pasting code.
+- A call that times out with "still running" keeps the user's FreeCAD busy: freecad_cancel interrupts it.
 - `cl` helpers are preloaded (cl.help() lists them): selectors cl.sel(obj, "edges %Circle z>40"),
   cl.show(shape, name) (replaces in place), cl.place, cl.revolve, cl.ring, cl.polar, cl.union,
   cl.cut, cl.fillet/chamfer with per-edge fallback, cl.check.
@@ -79,6 +80,14 @@ async def freecad_status() -> str:
     """FreeCAD version, open documents (active marked *), saved/modified state, and user names
     defined in the persistent exec namespace."""
     return await _call("status", 15)
+
+
+@mcp.tool()
+async def freecad_cancel() -> str:
+    """Interrupt the job FreeCAD is running (a tool call that timed out with "still running", or one that is
+    taking far too long), so the user's FreeCAD window becomes responsive again. Works while FreeCAD is busy;
+    the job stops at its next Python step and its document transaction is rolled back like any error."""
+    return await _call("cancel", 15)
 
 
 @mcp.tool()

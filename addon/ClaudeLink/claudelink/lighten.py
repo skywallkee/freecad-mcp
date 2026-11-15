@@ -137,7 +137,19 @@ def lighten(object, at="faces >Z", pattern="hex", cell=None, wall=None, margin=N
     loc.translate(-c)
     loc.transformShape(m, True)
     try:
-        region = loc.makeOffset2D(-margin, 0, False, False, False)
+        # inset the outline, then grow every hole/pocket opening separately (a plain inward offset of a face
+        # with small holes can leave them un-grown, and cells then cut into the holes)
+        outer = loc.OuterWire
+        region = Part.Face(outer).makeOffset2D(-margin, 0, False, False, False)
+        for w in loc.Wires:
+            if w.isSame(outer):
+                continue
+            try:
+                hole = Part.Face(Part.Wire(w.Edges))
+                region = region.cut(hole.makeOffset2D(margin, 0, False, False, False))
+            except Exception:
+                b = w.BoundBox
+                region = region.cut(Part.Face(Part.Wire(Part.makeCircle(b.DiagonalLength / 2 + margin, b.Center))))
     except Exception as e:
         raise UserError("could not inset the face by the margin (%s)" % e)
     if region.isNull() or region.Area < 1e-3:

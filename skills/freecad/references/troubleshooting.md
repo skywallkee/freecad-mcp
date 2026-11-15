@@ -34,3 +34,9 @@ filter (`faces z=6`), a type filter (`%Plane`) or `near(x,y,z)` plus an index.
 - Units: an imported part that is a few mm or a few km across was probably in metres or inches.
 - Strength numbers far off: check the load is in newtons (5 kg = 49 N) and the fixed faces are the real supports.
 - Fits feel tight/loose in reality: the profile is a guess until the FitGauge is printed and recorded.
+
+## A call timed out with "the job is still running in FreeCAD"
+The job keeps the user's FreeCAD window busy and later calls queue behind it. Call `freecad_cancel` - it
+interrupts the job from outside (it stops at its next Python step; a single long geometry-kernel call has to
+finish first). Then find a cheaper way: fewer faces, `freecad_target('headless')` for heavy or untried geometry,
+or a simplified copy (a strength simulation of a threaded part: build it with a plain hole/rod instead).

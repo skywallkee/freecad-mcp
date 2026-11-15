@@ -2,6 +2,7 @@
 
 All analysis runs on a print copy; the original object is never modified."""
 import math
+import random
 import time
 
 import FreeCAD
@@ -252,11 +253,11 @@ def _fillet_suggestions(s, thr):
 
 # ------------------------------------------------------------------ engineered supports
 
-def _inside_tester(shape):
+def _inside_tester(shape, force_mesh=False):
     """Fast point-in-solid test. Exact B-rep classification for simple shapes; for detailed ones (e.g. converted
     meshes, thousands of faces, ~0.1 s per B-rep query) a ray test on a mesh: cast down, inside if the first
     facet hit faces downwards (we are leaving the material)."""
-    if len(shape.Faces) <= 300:
+    if len(shape.Faces) <= 300 and not force_mesh:
         return lambda p: shape.isInside(p, 1e-6, True)
     import MeshPart
     m = MeshPart.meshFromShape(Shape=shape, LinearDeflection=max(shape.BoundBox.DiagonalLength / 800.0, 0.02),

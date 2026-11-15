@@ -30,6 +30,7 @@ Claude --stdio--> server/ (MCP, Python + uv) --127.0.0.1:47823 JSON-lines + toke
 | Tool | Purpose |
 |---|---|
 | `freecad_status` | version, open docs, namespace |
+| `freecad_cancel` | interrupt the job FreeCAD is running (works while it is busy), so a slow call never locks the window |
 | `freecad_exec` | run Python on FreeCAD's main thread; persistent namespace; returns change diff + trailing expression value; one undo step, rolled back on error |
 | `freecad_run_file` | run a file with `overrides` of top-level constants and a `then` snippet |
 | `freecad_tree` / `freecad_inspect` | compact model tree / one object in detail |
@@ -127,7 +128,7 @@ Its test cases are in `skills/freecad/evals/` (runnable with `claude plugin eval
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/ready_headless.py`, `../tests/designs_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/ready_headless.py`, `../tests/designs_headless.py`, `../tests/cancel_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License

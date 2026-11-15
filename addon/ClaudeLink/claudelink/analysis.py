@@ -551,8 +551,11 @@ def _regions(facets):
     return sorted(groups.values(), key=lambda g: -sum(f[3] for f in g))
 
 
-def _thickness_samples(mesh, facets, n_samples, seed=1):
+def _thickness_samples(mesh, facets, n_samples, seed=1, dots=False):
+    """(distance to the opposite wall, sample point) per ray; dots=True adds the dot product of the two
+    surface normals (-1 = parallel wall, towards 0 = a ridge/wedge such as a thread crest)."""
     rnd = random.Random(seed)
+    normal_of = {f[0]: f[2] for f in facets} if dots else None
     weights = [f[3] for f in facets]
     picks = rnd.choices(range(len(facets)), weights=weights, k=min(n_samples, 50000))
     res, miss = [], 0
@@ -569,7 +572,11 @@ def _thickness_samples(mesh, facets, n_samples, seed=1):
         if dist < 2e-4:  # grazed its own facet
             miss += 1
             continue
-        res.append((dist, c))
+        if dots:
+            n2 = normal_of.get(list(hit.keys())[0])
+            res.append((dist, c, nrm.dot(n2) if n2 is not None else -1.0))
+        else:
+            res.append((dist, c))
     return res, miss
 
 

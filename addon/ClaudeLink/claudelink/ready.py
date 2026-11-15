@@ -106,7 +106,15 @@ def _footprint_corners(srot, max_deg=120.0, min_edge=1.0):
     except Exception:
         return []
     out = []
-    for w in wires:
+    boxes = [w.BoundBox for w in wires]
+
+    def is_hole(i):                              # a loop inside another loop: pocket/hole outline, not a corner
+        b = boxes[i]
+        return any(j != i and o.XMin < b.XMin and o.YMin < b.YMin and o.XMax > b.XMax and o.YMax > b.YMax
+                   for j, o in enumerate(boxes))
+    for wi, w in enumerate(wires):
+        if is_hole(wi):
+            continue
         try:
             pts = [v.Point for v in w.OrderedVertexes]
         except Exception:
@@ -249,8 +257,8 @@ def ready(objects=None, up="auto", material=None, strength=None, doc=None):
             bad = max(bad, 1)
         from .printprep import _holes_horizontal
         nh = 0
-        for c0, a, r, t0, t1 in _holes_horizontal(sr):
-            probe = c0 + a * ((t0 + t1) / 2) + Z * (r * 1.2)
+        for c0, a, r, ta, tb in _holes_horizontal(sr):
+            probe = c0 + a * ((ta + tb) / 2) + Z * (r * 1.2)
             if r >= 1.0 and sr.isInside(probe, 1e-6, True):     # round top: no teardrop yet
                 nh += 1
         if nh:
@@ -258,9 +266,14 @@ def ready(objects=None, up="auto", material=None, strength=None, doc=None):
         # walls
         try:
             mesh = _mesh(sr)
-            res, _ = _thickness_samples(mesh, _facets(mesh), 1500)
+            res3, _ = _thickness_samples(mesh, _facets(mesh), 1500, dots=True)
         except Exception:
-            res = []
+            res3 = []
+        # a ridge (thread crest, knife edge: faces meeting at > ~20 deg) is not a wall: it just prints rounded
+        ridges = [r for r in res3 if r[0] < nozzle and r[2] > -0.94]
+        res = [(r[0], r[1]) for r in res3 if not (r[0] < nozzle and r[2] > -0.94)]
+        if len(ridges) > 3:
+            notes.append("sharp ridges finer than the nozzle (thread crests, knife edges) print slightly rounded")
         if res:
             discs = _membrane_discs(sr, layer)
 
@@ -397,6 +410,15 @@ def _fillets_down(sr, layer, thr=50.0):
             u0, u1, v0, v1 = f.ParameterRange
             if abs(u1 - u0) > math.pi + 1e-3:   # a full hole/boss, not a blend
                 continue
+            try:                                # concave = part of a horizontal hole's roof (a split hole wall,
+                um, vm = (u0 + u1) / 2, (v0 + v1) / 2      # thread land...), which the hole checks cover
+                pm = f.valueAt(um, vm)
+                radial = pm - s.Center
+                radial = radial - s.Axis * radial.dot(s.Axis)
+                if f.normalAt(um, vm).dot(radial) < 0:
+                    continue
+            except Exception:
+                pass
         nrm = cl._normal(f)
         lowest = min((f.normalAt(u, v).z for u in (f.ParameterRange[0], (f.ParameterRange[0] + f.ParameterRange[1]) / 2,
                                                     f.ParameterRange[1]) for v in (f.ParameterRange[2], f.ParameterRange[3])),
