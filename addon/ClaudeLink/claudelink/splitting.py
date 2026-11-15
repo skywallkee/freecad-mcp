@@ -532,6 +532,10 @@ def split(object, axis=None, positions=None, joint="pin", fit="press", pin_d=Non
             pass
         out_pieces.append(pc)
     base = name or (o.Name + "_split")
+    from .output import auto_checkpoint
+    ck = auto_checkpoint(d, "before split " + o.Name)
+    if ck:
+        notes.append(ck)
     # remove stale outputs of a previous run
     for x in list(d.Objects):
         if re.fullmatch(re.escape(base) + r"\d+|" + re.escape(base) + "_pins(_placed)?", x.Name):
@@ -812,6 +816,10 @@ def color_split(objects, colors=None, fit="press", joint="pin", doc=None, name=N
                     joints[-1] = joints[-1].replace(" - no glue needed", " - GLUE (no room for pins)")
     # 2. apply joint geometry
     base = name or (objs[0].Name + "_color")
+    from .output import auto_checkpoint
+    ck = auto_checkpoint(d, "before color_split")
+    if ck:
+        lines.append(ck)
     for x in list(d.Objects):
         if re.fullmatch(re.escape(base) + r"\d+(_\w+)?|" + re.escape(base) + "_pins(_placed)?", x.Name):
             d.removeObject(x.Name)

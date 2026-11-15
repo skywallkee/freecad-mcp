@@ -439,6 +439,20 @@ def _list(d):
     return sorted(glob.glob(os.path.join(_ckpt_dir(d), "*.FCStd")))
 
 
+def auto_checkpoint(d, label):
+    """Snapshot before a tool changes or replaces objects; returns a one-line note ('' if disabled/failed).
+    Turn off with freecad_print_profile set {"auto_checkpoint": false}."""
+    try:
+        from . import profile
+        if not profile.load().get("auto_checkpoint", True) or not d.Objects:
+            return ""
+        r = checkpoint("save", label=label, doc=d.Name)
+        n = r.split()[1].split("_", 1)[0]
+        return "checkpoint %s saved first (freecad_checkpoint action=restore name=%r undoes this)" % (n, n)
+    except Exception:
+        return ""
+
+
 def checkpoint(action="save", label=None, name=None, doc=None, keep=30):
     d = _doc(doc)
     files = _list(d)

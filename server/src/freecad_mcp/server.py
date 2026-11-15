@@ -23,6 +23,7 @@ once to check visually -> fix -> save with freecad_doc.
 - Verify, don't eyeball: freecad_check_geometry after booleans, freecad_fit for assemblies,
   freecad_section through mating features for real clearances, freecad_measure for critical
   dimensions, freecad_printability before exporting parts to print.
+- Before printing: freecad_ready (one verdict per part), freecad_print_fix for what it flags.
 - Printing: freecad_orient to pick the orientation, freecad_print_prep for the print copy with
   teardrops, bottom chamfer and engineered snap-off supports; export <obj>_print + supports together.
   freecad_strength for loaded parts (layer-aware FEM), freecad_split when a part is bigger than the
@@ -480,6 +481,29 @@ async def freecad_fastener(object: str,
                        length=length, head=head, fit=fit, slot=slot, slot_dir=slot_dir, buried=buried, height=height,
                        hook=hook, thickness=thickness, width=width, deflection=deflection, retain=retain,
                        material=material, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_ready(objects: list[str] | None = None, up: str = "auto", material: str | None = None,
+                        strength: dict | None = None, doc: str | None = None) -> str:
+    """ONE print-readiness verdict per part (default: visible solids): validity/watertight, bed fit, support
+    need, downward fillets, face-down counterbores, horizontal holes, walls thinner than the nozzle (with
+    locations), holes < 2 mm, warping risk (material, footprint, sharp corners), tipping/small contact, overlaps
+    between assembly parts; optional strength={"object","fixed","loads",...} (freecad_strength args).
+    up: print direction or "auto" (least support). Each problem names the tool that fixes it."""
+    return await _call("ready", 600, objects=objects, up=up, material=material, strength=strength, doc=doc)
+
+
+@mcp.tool()
+async def freecad_print_fix(object: str, up: str = "auto", fillets: bool = True, membranes: bool = True,
+                            teardrops: bool = True, ears: bool = False, ear_d: float | None = None,
+                            name: str | None = None, doc: str | None = None) -> str:
+    """Fix print problems ON THE MODEL for print direction `up` (auto = least support): downward-facing
+    fillets -> 45-deg chamfers, one-layer membranes over face-down counterbores/stepped holes (poke through
+    after printing), teardrop horizontal holes, optional corner pads (ears) at sharp footprint corners against
+    warping. In place for a Part::Feature (one undo step + auto checkpoint) or into `name`."""
+    return await _call("print_fix", 600, object=object, up=up, fillets=fillets, membranes=membranes,
+                       teardrops=teardrops, ears=ears, ear_d=ear_d, name=name, doc=doc)
 
 
 @mcp.tool()

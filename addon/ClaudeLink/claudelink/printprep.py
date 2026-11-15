@@ -560,8 +560,13 @@ def print_prep(object, up="auto", doc=None, chamfer=None, teardrops=True, suppor
     lines.append(rep)
     nf = _fillet_suggestions(p, max_overhang)
     if nf:
-        lines.append("suggestion: %d downward-facing fillet face(s) print as overhangs; 45 deg chamfers print cleaner" % nf)
+        lines.append("suggestion: %d downward-facing fillet face(s) print as overhangs; freecad_print_fix turns them into 45-deg chamfers" % nf)
     base = name or (o.Name + "_print")
+    if d.getObject(base) is not None:
+        from .output import auto_checkpoint
+        ck = auto_checkpoint(d, "before print_prep " + o.Name)
+        if ck:
+            lines.append(ck)
     po = cl.show(p, base, doc=d)
     if FreeCAD.GuiUp:
         try:
