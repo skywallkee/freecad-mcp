@@ -781,6 +781,7 @@ from . import labels as _labels  # noqa: E402
 from . import mechanisms as _mechanisms  # noqa: E402
 from . import lighten as _lighten  # noqa: E402
 from . import stdparts as _stdparts  # noqa: E402
+from . import meshimport as _meshimport  # noqa: E402
 
 METHODS.update(_analysis.METHODS)
 METHODS.update(_project.METHODS)
@@ -795,3 +796,4 @@ METHODS.update(_labels.METHODS)
 METHODS.update(_mechanisms.METHODS)
 METHODS.update(_lighten.METHODS)
 METHODS.update(_stdparts.METHODS)
+METHODS.update(_meshimport.METHODS)

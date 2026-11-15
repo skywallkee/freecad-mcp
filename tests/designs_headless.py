@@ -83,6 +83,25 @@ try:
     step("enclosure parts valid", "exec", ["True"], code="all(App.ActiveDocument.getObject(n).Shape.isValid() and "
          "len(App.ActiveDocument.getObject(n).Shape.Solids) == 1 for n in ['Pi_base', 'Pi_lid', 'Uno_base', 'Uno_lid', "
          "'Box_base', 'Box_lid', 'Block'])")
+    # --- mesh import / repair
+    stl = os.path.join(TMP, "broken.stl").replace("\\", "/")
+    stl_m = os.path.join(TMP, "metres.stl").replace("\\", "/")
+    call("exec", {"code": chr(10).join([
+        "import Mesh, MeshPart",
+        "s = Part.makeBox(40, 30, 5).cut(Part.makeCylinder(3, 5, V(10, 15, 0)))",
+        "s = s.fuse(Part.makeCylinder(4, 8, V(30, 15, 5)))",
+        "m = MeshPart.meshFromShape(Shape=s, LinearDeflection=0.02, AngularDeflection=0.1)",
+        "m.removeFacets([0, 1, 2])",
+        "m.addFacet(V(100, 100, 100), V(101, 100, 100), V(100, 101, 100))",
+        "m.write(%r)" % stl,
+        "m2 = MeshPart.meshFromShape(Shape=Part.makeBox(0.04, 0.03, 0.005), LinearDeflection=0.0001)",
+        "m2.write(%r)" % stl_m])})
+    step("broken STL repaired and converted", "mesh_import",
+         ["as loaded:", "open (holes in the surface)", "repaired: ", "clean, watertight", "solid broken: valid",
+          "hole d6", "boss d8", "flat faces"], path=stl)
+    step("solid usable for booleans", "exec", ["valid, 1 solids"],
+         code="cl.check(App.ActiveDocument.broken.Shape.cut(Part.makeBox(5, 5, 50, V(-1, -1, -1))))")
+    step("metre-scale file flagged", "mesh_import", ["probably in metres"], path=stl_m, solid=False, features=False)
     print("FAILS: %d" % fails)
 finally:
     proc.kill()

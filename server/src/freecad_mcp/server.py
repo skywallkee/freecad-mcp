@@ -34,6 +34,7 @@ once to check visually -> fix -> save with freecad_doc.
 - Mechanisms: freecad_mechanism (gears, print-in-place hinges, living hinges, flexures, springs).
 - Lightweighting / vents: freecad_lighten (pattern cut-outs, optional before/after strength).
 - Standard parts / enclosures: freecad_stdpart (bearings, magnets, servos, boards; seats), freecad_enclosure.
+- Downloaded/scanned meshes: freecad_mesh_import (repair, find holes/flats, convert to solid).
 - Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
@@ -585,6 +586,19 @@ async def freecad_enclosure(board: str | None = None, size: list[float] | None =
     Makes <name>_base, <name>_lid and a reference <name>_board; checks overlaps; lists the hardware."""
     return await _call("enclosure", 300, board=board, size=size, wall=wall, floor=floor, clearance=clearance,
                        standoff=standoff, headroom=headroom, lid=lid, vents=vents, corner_r=corner_r, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_mesh_import(path: str | None = None, mesh: str | None = None, name: str | None = None,
+                              repair: bool = True, solid: bool = True, features: bool = True,
+                              max_facets: int = 60000, scale: float = 1.0, doc: str | None = None) -> str:
+    """Import a downloaded/scanned STL/OBJ/3MF/PLY (path) or use a Mesh object (mesh): report defects (open
+    surface, non-manifold, self-intersections, flipped facets, loose pieces, wrong units), repair them,
+    decimate above max_facets, list the largest flat faces and fitted holes/bosses (diameter, axis, position)
+    and convert to a solid <name> (coplanar triangles merged into real faces) for booleans and measuring.
+    scale=25.4 for inch files, 1000 for metres."""
+    return await _call("mesh_import", 900, path=path, mesh=mesh, name=name, repair=repair, solid=solid,
+                       features=features, max_facets=max_facets, scale=scale, doc=doc)
 
 
 @mcp.tool()
