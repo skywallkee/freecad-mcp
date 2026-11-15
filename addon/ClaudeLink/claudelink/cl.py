@@ -359,6 +359,54 @@ def profile():
     return _p.summary()
 
 
+
+# ------------------------------------------------------------------ fasteners (shapes placed at `at`; axis = into the material)
+
+def thread(size="M8", length=10.0, at=(0, 0, 0), axis="z", fit="slide"):
+    """External ISO metric thread rod growing from `at` along axis; major diameter minus the fit clearance."""
+    from . import fasteners as _f
+    return _f.place(_f.thread_rod(size, length, fit), at, axis)
+
+
+def tapped_hole(size="M8", depth=10.0, at=(0, 0, 0), axis="-z", fit="slide"):
+    """Cutter for an internal ISO thread (with entry countersink); subtract it with cl.cut."""
+    from . import fasteners as _f
+    return _f.place(_f.tapped_cutter(size, depth, fit), at, axis)
+
+
+def screw_hole(size="M3", depth=10.0, at=(0, 0, 0), axis="-z", head="socket"):
+    """Cutter: clearance hole + counterbore ('socket') / countersink ('countersunk') / 'none'."""
+    from . import fasteners as _f
+    return _f.place(_f.screw_hole_cutter(size, depth, head), at, axis)
+
+
+def nut_trap(size="M3", at=(0, 0, 0), axis="-z", depth=None, slot=0.0, slot_dir=None, buried=0.0):
+    """Cutter: hex nut pocket (+slide clearance), optional side slot along slot_dir, or buried below the surface."""
+    from . import fasteners as _f
+    return _f.place(_f.nut_trap_cutter(size, depth, "slide", None, slot, buried), at, axis, slot_dir)
+
+
+def insert_hole(size="M3", at=(0, 0, 0), axis="-z", depth=None):
+    """Cutter: heat-set insert hole (profile diameter for M3) with a lead-in chamfer."""
+    from . import fasteners as _f
+    return _f.place(_f.insert_hole_cutter(size, depth)[0], at, axis)
+
+
+def selftap_hole(size="M3", depth=10.0, at=(0, 0, 0), axis="-z"):
+    """Cutter: pilot hole for a screw cut straight into the plastic."""
+    from . import fasteners as _f
+    return _f.place(_f.selftap_cutter(size, depth)[0], at, axis)
+
+
+def snap_hook(length=12.0, thickness=1.6, width=6.0, deflection=1.0, at=(0, 0, 0), axis="z", hook="x",
+              material=None):
+    """Cantilever snap hook (beam from `at` along axis, catch towards `hook`); returns (shape, report)."""
+    from . import fasteners as _f
+    hk, info = _f.snap_hook(length, thickness, width, deflection, material)
+    ax = _f._axis(axis)
+    hv = _f._axis(hook)
+    return _f.place(hk, at, ax, hv.cross(ax)), _f.snap_report(info)
+
 # ------------------------------------------------------------------ checks
 
 def check(shape):

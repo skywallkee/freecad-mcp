@@ -30,9 +30,12 @@ windowless work, then switch back with `'gui'`).
    then `freecad_export` the `_print` and `_print_supports` objects together. Too big for the bed: `freecad_split`
    (press-fit pins). Several colours: `freecad_color_split` (single-colour pieces, glue-free inlays/pins); `freecad_drawing` for a
    dimensioned PDF; `freecad_doc save`. Assembly/usage docs: `freecad_illustrate` (parts + hardware/tools sheet,
-   LEGO-style steps with auto order and insertion arrows, product views, cutaway) - pass the real hardware and tools.
+   LEGO-style steps with auto order and insertion arrows, product views, cutaway; kind='manual' = one PDF with a
+   print list) - pass the real hardware and tools. Several colours printed at once: `freecad_export(format='3mf', colors=true)`.
 
 ## Printed fits
+- Screws, threads, nut traps, heat-set inserts, snap hooks: `freecad_fastener` (sized from the profile; threads
+  below M5 print poorly - prefer inserts; snap hooks report strain vs the material limit).
 - Clearances come from the print profile: `freecad_print_profile` (show) and `cl.fit('press'|'snug'|'slide'|'loose')`,
   `cl.hole('insert_m3'|'selftap_m3')` in code. If the profile says GUESS, say so and suggest printing the
   FitGauge (`examples/fit_gauge` in the freecad-mcp repo); record results with `record_gauge`.

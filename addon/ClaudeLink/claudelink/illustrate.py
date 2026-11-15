@@ -680,8 +680,10 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
     kinds = ["parts", "steps", "views", "cutaway"] if kind in (None, "all") else \
         ([kind] if isinstance(kind, str) else list(kind))
     for k in kinds:
-        if k not in ("parts", "steps", "views", "cutaway"):
-            raise UserError("kind must be parts, steps, views, cutaway or all (got %r)" % k)
+        if k not in ("parts", "steps", "views", "cutaway", "manual"):
+            raise UserError("kind must be parts, steps, views, cutaway, manual or all (got %r)" % k)
+    if "manual" in kinds:     # the PDF manual needs every page
+        kinds = ["parts", "steps", "views", "cutaway", "manual"]
     width = max(500, min(int(width), 2400))
     d = _doc(doc)
     # ---- collect parts
@@ -729,9 +731,11 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
     same = len(groups) > 1 and len(distinct) == 1
     for g in groups:
         rgb = insts[g["members"][0]]["rgb"]
+        g["auto"] = False
         if same or _is_grey(rgb):
             rgb = PALETTE[pal % len(PALETTE)]
             pal += 1
+            g["auto"] = True
         g["rgb"] = rgb
         for m in g["members"]:
             insts[m]["rgb"] = rgb
@@ -806,6 +810,7 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
         return path
 
     vdef = _vdir(view)
+    step_imgs = []
     with _KeepActive():
         sc = _Scene()
         try:
@@ -836,7 +841,6 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                         except Exception:
                             pass
                 placed = []
-                step_imgs = []
                 for si, st in enumerate(plan):
                     img, vused, desc = _step_page(sc, si + 1, len(plan), st, placed, insts, groups, feats, thumbs,
                                                   vdef, diag, width)
@@ -865,6 +869,18 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                 lines.append("cutaway: " + desc)
         finally:
             sc.close()
+    # ---------------- print list + PDF manual
+    if "manual" in kinds:
+        img, plines = _print_list_page(groups, order, insts, thumbs, title, width)
+        save(img, prefix + "_print_list.png")
+        lines += plines
+        named = dict(pages)
+        pdf = os.path.join(folder, prefix + "_manual.pdf")
+        n = _write_manual(pdf, title, [named.get("views"), named.get("parts"), img], step_imgs,
+                          [named.get("cutaway")])
+        files.append(pdf)
+        lines.append("manual: %s (%d A4 pages)" % (os.path.basename(pdf), n))
+        pages.insert(2, ("print list", img))
     out = ["%s: illustrations of %d part(s) -> %s" % (d.Name, len(insts), folder)]
     out += lines
     out += ["files: " + ", ".join(os.path.basename(f) for f in files)]
@@ -881,6 +897,166 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
     if prev.width() > preview_width:
         prev = prev.scaledToWidth(preview_width, QtCore.Qt.SmoothTransformation)
     return {"text": text, "image_b64": base64.b64encode(_encode(prev)).decode("ascii"), "mime": "image/png"}
+
+
+# ------------------------------------------------------------------ print list + PDF manual
+
+_UP_WORDS = {(0, 0, 1): "as modelled", (0, 0, -1): "upside down", (1, 0, 0): "on its side, +X up",
+             (-1, 0, 0): "on its side, -X up", (0, 1, 0): "on its side, +Y up", (0, -1, 0): "on its side, -Y up"}
+
+
+def _orient_words(up):
+    k = tuple(int(round(c)) for c in up)
+    if (V(*k) - up).Length < 1e-3 and k in _UP_WORDS:
+        return _UP_WORDS[k]
+    return "lie on the face facing (%s)" % ", ".join(_r(c, 2) for c in up)
+
+
+def _print_list_page(groups, order, insts, thumbs, title, width):
+    from .printprep import _rank, _prof
+    from .strength import mech
+    from .splitting import _colour_name
+    from . import profile
+    prof = _prof()
+    pf = profile.load()
+    mat = profile.material(None)[0]
+    dens = mech(mat)[1].get("density", 1.25)
+    rows = []
+    total = 0.0
+    for gi in order:
+        g = groups[gi]
+        sh = insts[g["members"][0]]["shape"]
+        q = len(g["members"])
+        if g["label"] == "pin":
+            how, sup = "lying flat on its flat (as laid out in the _pins object)", 0.0
+        else:
+            try:
+                best = _rank(sh, 50.0, 10.0, None, prof)[0]
+                how, sup = _orient_words(best["up"]), best["support_vol"]
+            except Exception:
+                how, sup = "as modelled", 0.0
+        grams = sh.Volume / 1000.0 * dens * q
+        total += grams
+        colour = "any" if g.get("auto") else (_colour_name(g["rgb"]) or "as shown")
+        rows.append((gi, g["letter"], g["label"], q, colour, g["rgb"], how, "supports" if sup >= 1 else "no supports",
+                     _dims(sh), grams))
+    row_h = 74
+    H = int(60 + 40 + 34 + len(rows) * row_h + 150)
+    img, p = _canvas(width, H)
+    _header(p, width, title, "print list")
+    settings = "%s, nozzle %s mm, layer %s mm, %s" % (pf.get("printer") or "printer", fmt(pf.get("nozzle", 0.4)),
+                                                     fmt(pf.get("layer", 0.2)), mat)
+    _text(p, 24, 56, width - 48, 30, settings, 15, False, (90, 90, 95))
+    cols = [(24, 90, "part"), (114, 230, "name"), (344, 50, "qty"), (394, 120, "colour"), (514, 300, "orientation"),
+            (814, 170, "size / weight")]
+    y = 100
+    for x, w, hd in cols:
+        _text(p, x * width / 1000.0, y, w * width / 1000.0, 28, hd, 14, True, (110, 110, 115))
+    y += 34
+    from PySide import QtGui, QtCore
+    for k, (gi, letter, label, q, colour, rgb, how, sup, dims, grams) in enumerate(rows):
+        yy = y + k * row_h
+        if k % 2 == 0:
+            p.setPen(QtCore.Qt.NoPen)
+            p.setBrush(QtGui.QBrush(QtGui.QColor(246, 246, 248)))
+            p.drawRect(QtCore.QRectF(12, yy, width - 24, row_h))
+        sx = width / 1000.0
+        _bubble(p, 24 * sx + 12, yy + row_h / 2, 12, letter, (45, 45, 50))
+        _place(p, thumbs.get(gi), 24 * sx + 28, yy + 6, 90 * sx - 30, row_h - 12)
+        _text(p, 114 * sx, yy, 230 * sx, row_h, label, 15, True, (45, 45, 50), wrap=True)
+        _text(p, 344 * sx, yy, 50 * sx, row_h, "%dx" % q, 18, True, (200, 60, 30) if q > 1 else (60, 60, 65))
+        if colour != "any":
+            p.setPen(QtGui.QPen(QtGui.QColor(120, 120, 120), 1))
+            p.setBrush(QtGui.QBrush(QtGui.QColor(*[int(c * 255) for c in rgb[:3]])))
+            p.drawRoundedRect(QtCore.QRectF(394 * sx, yy + row_h / 2 - 10, 20, 20), 4, 4)
+        _text(p, 394 * sx + (26 if colour != "any" else 0), yy, 94 * sx, row_h, colour, 14, False, (60, 60, 65))
+        _text(p, 514 * sx, yy + 6, 300 * sx - 10, row_h / 2, how, 14, False, (50, 50, 55), wrap=True)
+        _text(p, 514 * sx, yy + row_h / 2, 300 * sx, row_h / 2 - 6, sup, 13, False,
+              (60, 140, 70) if sup == "no supports" else (190, 110, 30))
+        _text(p, 814 * sx, yy + 6, 170 * sx, row_h / 2, dims, 13, False, (70, 70, 75))
+        _text(p, 814 * sx, yy + row_h / 2, 170 * sx, row_h / 2 - 6, "%s g%s" % (_r(grams, 0), " total" if q > 1 else ""),
+              13, False, (70, 70, 75))
+    yy = y + len(rows) * row_h + 16
+    _text(p, 24, yy, width - 48, 30, "total about %s g of %s (solid parts; less with sparse infill)" % (
+        _r(total, 0), mat), 15, True, (50, 50, 55))
+    tips = ("Orientation is the one that needs the least support material. Print fit tests first if the clearances "
+            "are new; press-fit parts should go together by hand or with a soft mallet.")
+    _text(p, 24, yy + 34, width - 48, 80, tips, 14, False, (100, 100, 105), wrap=True)
+    p.end()
+    plines = ["print list: %d unique part(s), ~%s g %s; %d need supports" % (
+        len(rows), _r(total, 0), mat, sum(1 for r in rows if r[7] == "supports"))]
+    return img, plines
+
+
+def _write_manual(path, title, front, steps, back):
+    """A4 PDF: cover (views), parts + tools, print list, steps two per page, cutaway."""
+    from PySide import QtCore
+    prev = None
+
+    def quiet(mode, ctx, msg):      # Qt warns "Device has no metric information" for QPdfWriter: harmless
+        if "no metric information" not in str(msg) and prev is not None:
+            prev(mode, ctx, msg)
+    try:
+        prev = QtCore.qInstallMessageHandler(quiet)
+    except Exception:
+        prev = None
+    try:
+        return _write_manual_pdf(path, title, front, steps, back)
+    finally:
+        try:
+            QtCore.qInstallMessageHandler(prev)
+        except Exception:
+            pass
+
+
+def _write_manual_pdf(path, title, front, steps, back):
+    from PySide import QtGui, QtCore
+    w = QtGui.QPdfWriter(path)
+    try:
+        w.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+    except Exception:
+        pass
+    w.setResolution(150)
+    try:
+        w.setPageMargins(QtCore.QMarginsF(0, 0, 0, 0))
+    except Exception:
+        pass
+    w.setTitle(title)
+    sheets = [[i] for i in front if i is not None]
+    for k in range(0, len(steps), 2):
+        sheets.append(steps[k:k + 2])
+    sheets += [[i] for i in back if i is not None]
+    p = QtGui.QPainter(w)
+    p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    # QPdfWriter reports no metrics before the first paint on some Qt builds: use A4 at 150 dpi
+    try:
+        r = w.pageLayout().fullRectPixels(150)
+        W, H = r.width(), r.height()
+    except Exception:
+        W, H = 0, 0
+    if W < 100 or H < 100:
+        W, H = 1240, 1754
+    m = int(W * 0.06)
+    for n, imgs in enumerate(sheets):
+        if n:
+            w.newPage()
+        y = m
+        avail = H - 2 * m - 40
+        each = (avail - (len(imgs) - 1) * 30) / float(len(imgs))
+        for im in imgs:
+            k = min((W - 2 * m) / float(im.width()), each / float(im.height()))
+            dw, dh = im.width() * k, im.height() * k
+            p.drawImage(QtCore.QRectF(m + (W - 2 * m - dw) / 2, y, dw, dh), im)
+            y += dh + 30
+        # footer drawn into an image: text painted straight onto QPdfWriter floods the log with metric warnings
+        fi, fp = _canvas(W - 2 * m, 30)
+        _text(fp, 0, 0, W - 2 * m, 30, "%s  -  %d / %d" % (title, n + 1, len(sheets)), 18, False, (150, 150, 155),
+              "right")
+        fp.end()
+        p.drawImage(QtCore.QRectF(m, H - m, W - 2 * m, 30), fi)
+    p.end()
+    return len(sheets)
 
 
 # ------------------------------------------------------------------ pages
@@ -976,13 +1152,18 @@ def _step_page(sc, num, total, st, placed, insts, groups, feats, thumbs, vdef, d
     tmp = []
     anchor = placed + [i for i in new if st["dirs"].get(i) is None]
     visible = [feats[i].Name for i in placed]
-    us = []
+    moving = [i for i in new if st["dirs"].get(i) is not None and anchor]
+    us = [st["dirs"][i] for i in moving]
+    if st.get("view"):
+        d, vname = _vdir(st["view"]), st["view"]
+    else:
+        d, vname = _pick_view(vdef, us)
     r_arrow = max(0.3, min(3.0, diag * 0.006))
     for i in new:
-        u = st["dirs"].get(i)
-        if u is None or not anchor:
+        if i not in moving:
             visible.append(feats[i].Name)
             continue
+        u = st["dirs"][i]
         s = insts[i]["shape"]
         lo, hi = _Planner._span(s, u)
         ext = hi - lo
@@ -991,20 +1172,23 @@ def _step_page(sc, num, total, st, placed, insts, groups, feats, thumbs, vdef, d
         ex = s.copy()
         ex.translate(-u * dist)
         tmp.append(sc.add(ex, "X%d" % i, insts[i]["rgb"]))
-        c = s.BoundBox.Center
-        cp = c - u * c.dot(u)
-        m = gap * 0.12
         bb = s.BoundBox
         small = min(bb.XLength, bb.YLength, bb.ZLength)
-        a = _arrow(cp + u * (lo - gap + m), cp + u * (lo - m), max(0.25, min(r_arrow, 0.12 * small)))
+        r = max(0.25, min(r_arrow, 0.12 * small))
+        c = bb.Center
+        cp = c - u * c.dot(u)
+        # a wide part would hide an arrow drawn through its middle: put it beside the part, camera side
+        w = -d - u * (-d).dot(u)
+        if w.Length > 1e-6:
+            w.normalize()
+            wlo, whi = _Planner._span(s, w)
+            if min(whi - wlo, max(_Planner._span(s, w.cross(u))[1] - _Planner._span(s, w.cross(u))[0], 0)) > 1.5 * gap:
+                cp = cp + w * (whi - c.dot(w) + 4 * r)
+        m = gap * 0.12
+        a = _arrow(cp + u * (lo - gap + m), cp + u * (lo - m), r)
         if a is not None:
             tmp.append(sc.add(a, "A%d" % i, ARROW_RGB, lines=False))
-        us.append(u)
     visible += [o.Name for o in tmp]
-    if st.get("view"):
-        d, vname = _vdir(st["view"]), st["view"]
-    else:
-        d, vname = _pick_view(vdef, us)
     shot = sc.shot(visible, d, H)
     sc.drop(tmp)
     # description

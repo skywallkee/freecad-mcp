@@ -28,6 +28,8 @@ once to check visually -> fix -> save with freecad_doc.
   freecad_strength for loaded parts (layer-aware FEM), freecad_split when a part is bigger than the
   bed, freecad_color_split for single-colour pieces that assemble without glue, freecad_motion for
   hinges/lids/sliders and print-in-place clearance.
+- Fasteners: freecad_fastener (screw holes, printed threads, nut traps, heat-set inserts, snap hooks;
+  cl.thread/tapped_hole/screw_hole/nut_trap/insert_hole/selftap_hole/snap_hook in code).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
 - Projects (~/Documents/<Name> with build_*.py + params): freecad_project_info to read parameters,
@@ -268,14 +270,18 @@ async def freecad_project_new(name: str, description: str = "", folder: str | No
 @mcp.tool()
 async def freecad_export(objects: list[str] | None = None, format: str = "stl", dir: str | None = None,
                          path: str | None = None, tolerance: float = 0.01, angular: float = 0.1,
-                         single_file: bool = False, names: dict | None = None, doc: str | None = None) -> str:
+                         single_file: bool = False, names: dict | None = None, colors: bool = False,
+                         doc: str | None = None) -> str:
     """Export objects (default: visible solids) as stl, 3mf, obj, amf, ply (meshed with chord
     tolerance mm / angular rad), or step, iges, brep. Default location: the document's folder
     stl/ (mesh) or step/ (CAD), one file per object named after its label (names={obj: filename}
     to override); single_file or path writes one combined file. Reports size, facets and
-    watertightness per file. Existing files are replaced."""
+    watertightness per file. Existing files are replaced.
+    colors=true (3mf only): ONE file, each object in its display colour as a separate part kept in place,
+    one extruder per colour (PrusaSlicer/Orca volume metadata + core 3MF base materials) - for printing a
+    multi-colour model in one go (default name <doc>_color.3mf)."""
     return await _call("export", 600, objects=objects, format=format, dir=dir, path=path, tolerance=tolerance,
-                       angular=angular, single_file=single_file, names=names, doc=doc)
+                       angular=angular, single_file=single_file, names=names, colors=colors, doc=doc)
 
 
 @mcp.tool()
@@ -422,7 +428,7 @@ async def freecad_motion(moving: list[str] | str, fixed: list[str] | None = None
 
 
 @mcp.tool()
-async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cutaway"] | list[str] = "all",
+async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cutaway", "manual"] | list[str] = "all",
                              objects: list[str] | None = None, steps: list[dict] | None = None,
                              base: str | None = None, tools: list | None = None, hardware: list | None = None,
                              title: str | None = None, view: str = "iso", views: list[str] | None = None,
@@ -440,11 +446,40 @@ async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cu
     "view": "iso_left"}]; split/colour-split pins are shown via their hidden <name>_pins_placed;
     views = hero iso + back/front/right/top (views=[...] to change), with overall size;
     cutaway = quarter cut from the main view + straight section (cut axis x/y/z at `at`, default centre).
+    manual = all of the above + a print list (per part: colour, quantity, least-support orientation, size, grams;
+    printer settings) bound into one A4 PDF <title>_manual.pdf.
     view: iso iso_left iso_back iso_back_right iso_below.. front back left right top bottom or dir:x,y,z.
     Files go to <project>/images (or out_dir); returns paths, the step list and one preview image."""
     return _out(await _call("illustrate", 900, kind=kind, objects=objects, steps=steps, base=base, tools=tools,
                             hardware=hardware, title=title, view=view, views=views, cut=cut, at=at, width=width,
                             out_dir=out_dir, preview=preview, preview_width=preview_width, doc=doc))
+
+
+@mcp.tool()
+async def freecad_fastener(object: str,
+                           kind: Literal["screw_hole", "tapped_hole", "thread", "nut_trap", "insert", "insert_boss",
+                                         "selftap", "snap"],
+                           at: list[float] | str, axis: str | list[float] | None = None, size: str = "M3",
+                           depth: float | None = None, length: float | None = None,
+                           head: Literal["socket", "countersunk", "none"] = "socket",
+                           fit: Literal["press", "snug", "slide", "loose"] | None = None,
+                           slot: float = 0.0, slot_dir: str | list[float] | None = None, buried: float = 0.0,
+                           height: float | None = None, hook: str | list[float] | None = None,
+                           thickness: float = 1.6, width: float = 6.0, deflection: float = 1.0, retain: float = 90.0,
+                           material: str | None = None, name: str | None = None, doc: str | None = None) -> str:
+    """Add a printable fastener feature to an object (in place for a Part::Feature as one undo step, else into
+    `name`/<obj>_f). at = [x,y,z] or a selector on the object ('faces >Z' -> face centre, axis into the part;
+    'edges %Circle z=10 [0]' -> circle centre). axis = direction INTO the material (out of it for thread/snap).
+    kinds: screw_hole (ISO clearance + socket counterbore / 90-deg countersink; depth omitted = through),
+    tapped_hole (internal ISO metric thread, entry countersink), thread (external threaded rod of `length`),
+    nut_trap (hex pocket; slot = side slot length along slot_dir; buried = depth below the surface for a captive
+    nut), insert (heat-set insert hole), insert_boss (boss of `height` + insert hole), selftap (pilot hole),
+    snap (cantilever hook: length/thickness/width/deflection, catch towards `hook`; reports strain vs the
+    material's limit and push-in force). Sizes M2..M24 (coarse pitch). Clearances from the print profile."""
+    return await _call("fastener", 300, object=object, kind=kind, at=at, axis=axis, size=size, depth=depth,
+                       length=length, head=head, fit=fit, slot=slot, slot_dir=slot_dir, buried=buried, height=height,
+                       hook=hook, thickness=thickness, width=width, deflection=deflection, retain=retain,
+                       material=material, name=name, doc=doc)
 
 
 @mcp.tool()

@@ -62,9 +62,13 @@ _MESH_FMT = {"stl", "3mf", "obj", "amf", "ply", "off"}
 
 
 def export(objects=None, format="stl", dir=None, path=None, tolerance=0.01, angular=0.1, single_file=False,
-           doc=None, names=None):
+           doc=None, names=None, colors=False):
     d = _doc(doc)
     fmt_ = format.lower().lstrip(".")
+    if colors:
+        if fmt_ != "3mf":
+            raise UserError("colors=true needs format 3mf")
+        return _export_color_3mf(d, objects, dir, path, tolerance, angular)
     if fmt_ == "stp":
         fmt_ = "step"
     if fmt_ not in _MESH_FMT | {"step", "brep", "iges"}:
@@ -125,6 +129,109 @@ def export(objects=None, format="stl", dir=None, path=None, tolerance=0.01, angu
     head = "exported %d file(s) as %s in %.1fs%s" % (len(jobs), fmt_.upper(), time.time() - t0,
                                                     (", mesh tolerance %s mm" % fmt(tolerance)) if fmt_ in _MESH_FMT else "")
     return "\n".join([head] + lines)
+
+
+# ------------------------------------------------------------------ multi-colour 3MF
+
+def _obj_rgb(o, k):
+    from .splitting import _COLOURS
+    try:
+        if FreeCAD.GuiUp:
+            return tuple(o.ViewObject.ShapeColor[:3])
+    except Exception:
+        pass
+    for name, rgb in _COLOURS.items():          # headless: colour-split names end in _<colour>
+        if re.search(r"(^|_)%s($|_)" % name, o.Name.lower()):
+            return rgb
+    from .illustrate import PALETTE
+    return PALETTE[k % len(PALETTE)]
+
+
+def _export_color_3mf(d, objects, dir, path, tolerance, angular):
+    """One 3MF with every part in its own colour: a single object whose triangles carry a base-material
+    colour per part (core 3MF), plus PrusaSlicer/Orca volume metadata (one volume per part, extruder per
+    colour) so the parts stay assembled and land on the right filament."""
+    import zipfile
+    import MeshPart
+    from .splitting import _colour_name
+    from xml.sax.saxutils import quoteattr
+    objs = _resolve_objects(d, objects)
+    if not objs:
+        raise UserError("nothing to export")
+    if path is None:
+        if dir is None:
+            if not d.FileName:
+                raise UserError("document is unsaved: give dir or path")
+            dir = os.path.join(os.path.dirname(d.FileName), "stl")
+        path = os.path.join(dir, _safe(d.Name) + "_color.3mf")
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    t0 = time.time()
+    colours = []        # distinct rgb in first-seen order -> extruder index
+    parts = []
+    for k, o in enumerate(objs):
+        rgb = tuple(round(c, 3) for c in _obj_rgb(o, k))
+        if rgb not in colours:
+            colours.append(rgb)
+        m = MeshPart.meshFromShape(Shape=global_shape(o), LinearDeflection=tolerance, AngularDeflection=angular,
+                                   Relative=False)
+        pts, facets = m.Topology
+        parts.append((o, rgb, pts, facets, m.isSolid()))
+    vert, tris, vols = [], [], []
+    for o, rgb, pts, facets, solid in parts:
+        off = len(vert)
+        first = len(tris)
+        vert += [(p.x, p.y, p.z) for p in pts]
+        ci = colours.index(rgb)
+        tris += [(a + off, b + off, c + off, ci) for a, b, c in facets]
+        vols.append((o, first, len(tris) - 1, ci + 1, solid))
+    hexc = ["#%02X%02X%02XFF" % tuple(int(round(c * 255)) for c in rgb) for rgb in colours]
+    model = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
+             'xmlns:slic3rpe="http://schemas.slic3r.org/3mf/2017/06">',
+             ' <metadata name="Application">FreeCAD ClaudeLink</metadata>',
+             ' <resources>', '  <basematerials id="1">']
+    model += ['   <base name=%s displaycolor="%s"/>' % (quoteattr(_colour_name(rgb) or "colour %d" % (i + 1)), hexc[i])
+              for i, rgb in enumerate(colours)]
+    model += ['  </basematerials>', '  <object id="2" type="model" pid="1" pindex="0" name=%s>' % quoteattr(d.Label),
+              '   <mesh>', '    <vertices>']
+    model += ['     <vertex x="%.5f" y="%.5f" z="%.5f"/>' % v for v in vert]
+    model += ['    </vertices>', '    <triangles>']
+    model += ['     <triangle v1="%d" v2="%d" v3="%d" pid="1" p1="%d"/>' % t for t in tris]
+    model += ['    </triangles>', '   </mesh>', '  </object>', ' </resources>',
+              ' <build>', '  <item objectid="2"/>', ' </build>', '</model>']
+    cfg = ['<?xml version="1.0" encoding="UTF-8"?>', '<config>', ' <object id="2" instances_count="1">',
+           '  <metadata type="object" key="name" value=%s/>' % quoteattr(d.Label)]
+    for o, a, b, ext, solid in vols:
+        cfg += ['  <volume firstid="%d" lastid="%d">' % (a, b),
+                '   <metadata type="volume" key="name" value=%s/>' % quoteattr(o.Label),
+                '   <metadata type="volume" key="volume_type" value="ModelPart"/>',
+                '   <metadata type="volume" key="extruder" value="%d"/>' % ext,
+                '  </volume>']
+    cfg += [' </object>', '</config>']
+    ctypes = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/'
+              'content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships'
+              '+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+              '<Default Extension="config" ContentType="text/xml"/></Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+            'relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/'
+            '3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+    existed = os.path.exists(path)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", ctypes)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", "\n".join(model))
+        z.writestr("Metadata/Slic3r_PE_model.config", "\n".join(cfg))
+    lines = ["exported 1 multi-colour 3MF in %.1fs, mesh tolerance %s mm" % (time.time() - t0, fmt(tolerance)),
+             "%s %s (%s, %d parts, %d triangles)" % ("replaced" if existed else "wrote", path, _kb(path), len(vols),
+                                                    len(tris))]
+    for i, rgb in enumerate(colours):
+        members = [o.Label for o, a, b, ext, solid in vols if ext == i + 1]
+        lines.append("  extruder %d = %s %s: %s" % (i + 1, _colour_name(rgb) or "colour", hexc[i][:7], ", ".join(members)))
+    bad = [o.Label for o, a, b, ext, solid in vols if not solid]
+    if bad:
+        lines.append("NOT watertight: " + ", ".join(bad))
+    lines.append("open in PrusaSlicer/Orca: loads as one object, one part per piece, each on its colour's extruder")
+    return "\n".join(lines)
 
 
 # ------------------------------------------------------------------ CAD vs mesh deviation

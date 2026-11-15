@@ -61,7 +61,7 @@ Refs: `Obj` or `Obj:<selector>`; selectors shared with `cl.sel` (see `cl.help()`
 | `freecad_project_params` | persist values: `auto` (override JSON if the script reads it, else source), `override`, `source` (rewrite literal, keep comment), `none`; syncs the Params sheet; optional rebuild |
 | `freecad_project_rebuild` | run build script (`build(doc, export_dir)` / `build()`), temporary overrides, export/save/checks |
 | `freecad_project_new` | scaffold `~/Documents/<Name>` with the house-style build script, macro, folders, saved .FCStd |
-| `freecad_export` | stl/3mf/obj/amf/ply (tolerance) or step/iges/brep; default to project stl/ or step/; watertight report |
+| `freecad_export` | stl/3mf/obj/amf/ply (tolerance) or step/iges/brep; default to project stl/ or step/; watertight report; `colors=true` writes one multi-colour 3MF (parts kept in place, one extruder per colour) |
 | `freecad_compare_mesh` | two-way normal deviation CAD vs mesh/STL: stats, worst regions, missing/extra areas, deviation map |
 | `freecad_checkpoint` | save/list/restore(in place, one undo step)/open snapshots in FreeCAD's cache dir |
 
@@ -85,7 +85,8 @@ first def are parameters; `# --- group ---` comment lines group them; `params_ov
 | `freecad_split` | split a part bigger than the bed at small, compact sections; press-fit pins (printed flat) or integral pegs, 2+ per interface; small 45° bosses carry pins in thin walls |
 | `freecad_color_split` | one single-colour piece per colour region; finds each piece's assembly direction; press-fit inlay pockets (exact 2D offset for logos/text) or pinned flat joints; flags pieces that can't be assembled; estimates the purge a multi-colour print would waste |
 | `freecad_motion` | rotate/slide parts through their travel: collision ranges with a ghost of the worst position, min clearance with fit class, print-in-place check |
-| `freecad_illustrate` | assembly/usage PNG pages: parts + hardware + tools sheet (identical parts grouped, lettered, sized; tool icons), LEGO-style steps (auto assembly order that keeps later parts insertable, parts pulled out along their insertion direction with arrows; or your own steps), hero + orthographic views with overall size, quarter cutaway + section; saved to the project's `images/` |
+| `freecad_illustrate` | assembly/usage PNG pages: parts + hardware + tools sheet (identical parts grouped, lettered, sized; tool icons), LEGO-style steps (auto assembly order that keeps later parts insertable, parts pulled out along their insertion direction with arrows; or your own steps), hero + orthographic views with overall size, quarter cutaway + section; `manual` adds a print list (colour, quantity, least-support orientation, grams) and binds everything into one A4 PDF; saved to the project's `images/` |
+| `freecad_fastener` | printable fasteners on a part: ISO clearance holes with counterbore/countersink, internal and external ISO metric threads (M2-M24, clearance from the profile), nut traps (side slot or buried/captive), heat-set insert holes and bosses, self-tap holes, cantilever snap hooks with strain check and push-in force. Also as `cl.thread / tapped_hole / screw_hole / nut_trap / insert_hole / selftap_hole / snap_hook` |
 
 Engineered supports go only under overhangs that need them (anchored flat spans up to `max_bridge`
 bridge instead). Each support is a thin vertical wall designed in its own plane: the part's section
@@ -110,7 +111,7 @@ Workflow skill: `skills/freecad/SKILL.md` (loop, verification checklist, token d
 ## Dev
 - Hot-reload addon code inside a running FreeCAD: `freecad_exec("import claudelink; claudelink.restart()")`.
 - Headless instance (no window): `freecadcmd addon\ClaudeLink\headless_serve.py` (port 47824; MCP with `CLAUDELINK_TARGET=headless`).
-- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/mcp_roundtrip.py`.
+- Tests: `uv run --directory server python ../tests/smoke_headless.py`, `../tests/phase2_headless.py`, `../tests/phase3_headless.py`, `../tests/phase4_mcp.py`, `../tests/profile_headless.py`, `../tests/printprep_headless.py`, `../tests/strength_headless.py`, `../tests/split_headless.py`, `../tests/illustrate_headless.py`, `../tests/fastener_headless.py`, `../tests/mcp_roundtrip.py`; with FreeCAD open, `../tests/gui_live_mcp.py` runs the printing/docs tools over MCP against the GUI.
 - `mcp` is pinned `<2` (2.x renamed FastMCP).
 
 ## License
