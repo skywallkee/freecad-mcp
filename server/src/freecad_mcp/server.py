@@ -32,6 +32,7 @@ once to check visually -> fix -> save with freecad_doc.
 - Fasteners: freecad_fastener (screw holes, printed threads, nut traps, heat-set inserts, snap hooks;
   cl.thread/tapped_hole/screw_hole/nut_trap/insert_hole/selftap_hole/snap_hook in code).
 - Mechanisms: freecad_mechanism (gears, print-in-place hinges, living hinges, flexures, springs).
+- Lightweighting / vents: freecad_lighten (pattern cut-outs, optional before/after strength).
 - Labels: freecad_label (embossed/engraved text, date/version stamp under the part, QR codes).
 - Docs: freecad_illustrate for parts + tools sheets, LEGO-style assembly steps, product views and
   cutaways (PNG pages in the project's images/ folder).
@@ -540,6 +541,21 @@ async def freecad_mechanism(kind: Literal["gear", "gear_pair", "hinge", "living_
     flexure (parallelogram): length 20, thickness 1, width 10, gap 20 -> stiffness N/mm, max travel;
     spring (compression, square wire): diameter 12, wire 1.6, coils 6, length 20 -> rate N/mm, travel."""
     return await _call("mechanism", 300, kind=kind, params=params, at=at, name=name, doc=doc)
+
+
+@mcp.tool()
+async def freecad_lighten(object: str, at: str = "faces >Z",
+                          pattern: Literal["hex", "grid", "circles", "slots"] = "hex", cell: float | None = None,
+                          wall: float | None = None, margin: float | None = None, depth: float | None = None,
+                          slot_len: float | None = None, angle: float = 0.0, check: dict | None = None,
+                          name: str | None = None, doc: str | None = None) -> str:
+    """Lightweighting / vent pattern cut into a planar face (at = face selector): hex, grid, circles or slots
+    (vents). cell = pitch mm (10), wall = rib width (>= 4 nozzle widths), margin = solid border kept from the
+    face edges and holes; depth omitted = through the part along the face normal. Only whole cells inside the
+    border. Reports volume and grams saved; check={"fixed": [...], "loads": [...]} (freecad_strength args)
+    runs FEM before and after and flags a safety factor under 3. In place + auto checkpoint."""
+    return await _call("lighten", 900, object=object, at=at, pattern=pattern, cell=cell, wall=wall, margin=margin,
+                       depth=depth, slot_len=slot_len, angle=angle, check=check, name=name, doc=doc)
 
 
 @mcp.tool()

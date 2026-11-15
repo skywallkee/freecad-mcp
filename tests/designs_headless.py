@@ -50,6 +50,19 @@ try:
     step("spring rate", "mechanism", ["rate ~", "N/mm"], kind="spring", at=[0, 250, 0])
     step("all mechanism solids valid", "exec", ["True"],
          code="all(o.Shape.isValid() and len(o.Shape.Solids) == 1 for o in App.ActiveDocument.Objects)")
+    # --- lightweighting
+    call("exec", {"code": "; ".join([
+        "p = Part.makeBox(120, 60, 4, V(0, 400, 0)).cut(Part.makeCylinder(4, 4, V(20, 430, 0)))",
+        "cl.show(p, 'Panel')", "cl.show(Part.makeBox(120, 60, 4, V(0, 500, 0)), 'Panel2')",
+        "cl.show(Part.makeBox(80, 40, 2, V(0, 600, 0)), 'Lid')"])})
+    step("hex pattern through a panel, away from the hole", "lighten", ["hex cut-outs", "-> Panel", "saved"],
+         object="Panel", at="faces >Z", pattern="hex", cell=12)
+    step("panel still one valid solid", "exec", ["valid, 1 solids"], code="cl.check(App.ActiveDocument.Panel)")
+    step("vent slots in a lid", "lighten", ["slots cut-outs"], object="Lid", at="faces >Z", pattern="slots",
+         cell=4, wall=2, slot_len=20)
+    step("grid with strength before/after", "lighten", ["grid cut-outs", "strength: safety factor"],
+         object="Panel2", at="faces >Z", pattern="grid", cell=15,
+         check={"fixed": ["<X"], "loads": [{"ref": ">X", "force": 20, "dir": "-z"}]})
     print("FAILS: %d" % fails)
 finally:
     proc.kill()
