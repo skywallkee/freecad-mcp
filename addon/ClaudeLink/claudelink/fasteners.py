@@ -424,8 +424,6 @@ def fastener(object, kind, at, axis=None, size="M3", depth=None, length=None, he
     # write back
     from .output import auto_checkpoint
     ck = auto_checkpoint(d, "before fastener " + o.Name)
-    if ck:
-        notes.append(ck)
     d.openTransaction("fastener")
     try:
         if name is None and o.TypeId == "Part::Feature":
@@ -451,6 +449,8 @@ def fastener(object, kind, at, axis=None, size="M3", depth=None, length=None, he
         o.Name, tag, _vstr(p), _vstr(axv), target, _f(round(v0, 1)), _f(round(res.Volume, 1)),
         "valid" if res.isValid() else "INVALID")]
     out += ["note: " + n for n in notes]
+    if ck:
+        out.append(ck)
     fit_m = profile.material(mat)[1]
     if fitc and not fit_m.get("measured"):
         out.append("clearances are profile guesses until the FitGauge is printed")
