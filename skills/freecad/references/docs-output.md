@@ -16,8 +16,26 @@
   With your own steps, name the part everything is built on as `base`: it is shown in place from step 1.
   Use them when the real order differs from "slides straight in" (press fits, snap fits, sub-assemblies).
 - `kind="views"`, `kind="cutaway"` (quarter cut + section).
-- `kind="manual"`: all of the above + a print list (colour, quantity, least-support orientation, grams) as one
-  A4 PDF. Files go to the project's `images/` folder unless `out_dir` is given.
+- `kind="manual"`: all of the above + a print list (colour, quantity, least-support orientation, grams) bound
+  into one A4 PDF manual: cover (title, `subtitle`, hero view, key facts), table of contents, numbered sections
+  (overview, parts and tools, printing, assembly, inside view) with running headers and page numbers, long
+  lists split over pages, and a "Good to know" page from `tips=[...]`.
+  Files go to the project's `images/` folder unless `out_dir` is given.
+
+### The illustration workflow (do this whenever the user asks for illustrations, instructions or a manual)
+The deliverable is the full PDF manual, not loose pictures - always `kind="manual"`, unless the user asks for
+one specific page.
+1. Read what the project already says about assembly (README, existing guide, build script comments) and
+   follow that order; only fall back to the automatic plan when nothing is written down.
+2. Write the steps yourself for anything with press fits, snap fits or sub-assemblies (`steps=[...]` with a
+   `note` per step, `base` = the part everything is built on). Keep notes to what the builder does in that step.
+3. Mark purchased parts with `bought=[...]`, pass `tools`, and `hardware` for items that are not modelled.
+4. Give the cover a one-line `subtitle` (what it is, what it fits) and 3-6 `tips` (how it holds together, what
+   to test-print first, anything unverified such as unmeasured dimensions, how to take it apart).
+5. Write to a new folder (e.g. `images/manual`) so existing guides and renders are not overwritten.
+6. Look at the step overview and the parts page before sending: check no caption is cut, every part appears
+   in a step, and the views show the side the note talks about (`"view": "iso_back"` for the far side).
+7. Send the PDF to the user and say what differs from their written instructions, if anything.
 
 ## Drawings
 `freecad_drawing`: dimensioned TechDraw PDF/SVG for machining or sharing; `keep=false` leaves no trace.

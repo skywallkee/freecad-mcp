@@ -738,7 +738,7 @@ def _parse_items(items, default_qty=1):
 
 def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hardware=None, title=None,
                view="iso", views=None, cut=None, at=None, width=1000, out_dir=None, doc=None, preview=True,
-               preview_width=1000, bought=None):
+               preview_width=1000, bought=None, subtitle=None, tips=None):
     """Render assembly / usage illustrations of an assembly (see the MCP tool for the parameters)."""
     if not FreeCAD.GuiUp:
         raise UserError("illustrate needs the FreeCAD GUI (this is a headless instance)")
@@ -892,6 +892,7 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
 
     vdef = _vdir(view)
     step_imgs = []
+    hero_img = None
     with _KeepActive():
         sc = _Scene()
         try:
@@ -945,6 +946,7 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                 vlist = views or ["iso", "iso_back", "front", "right", "top"]
                 shots = [(v, sc.shot(all_names, _vdir(v), width * 0.7 if k == 0 else width * 0.4))
                          for k, v in enumerate(vlist)]
+                hero_img = shots[0][1]
                 img = _views_page(shots, title, allb, width)
                 save(img, prefix + "_views.png")
                 pages.append(("views", img))
@@ -959,15 +961,62 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
             sc.close()
     # ---------------- print list + PDF manual
     if "manual" in kinds:
-        img, plines = _print_list_page(groups, order, insts, thumbs, title, width)
+        img, plines, pdata = _print_list_page(groups, order, insts, thumbs, title, width)
         save(img, prefix + "_print_list.png")
         lines += plines
         named = dict(pages)
         pdf = os.path.join(folder, prefix + "_manual.pdf")
-        n = _write_manual(pdf, title, [named.get("views"), named.get("parts"), img], step_imgs,
-                          [named.get("cutaway")])
-        files.append(pdf)
-        lines.append("manual: %s (%d A4 pages)" % (os.path.basename(pdf), n))
+        t_items, h_items = _parse_items(tools), _parse_items(hardware)
+        # long lists are re-drawn in page-sized chunks so they stay readable on A4
+        PER = 30
+        chunks = [order[k:k + PER] for k in range(0, len(order), PER)] or [order]
+        if len(chunks) == 1:
+            part_sheets = [[named.get("parts")]]
+        else:
+            part_sheets = [[_parts_page(groups, ch, insts, thumbs, t_items if k == len(chunks) - 1 else [],
+                                        h_items if k == len(chunks) - 1 else [], title, width)]
+                           for k, ch in enumerate(chunks)]
+        rows = pdata["rows"]
+        RPP = 16
+        if len(rows) <= RPP:
+            print_sheets = [[img]]
+        else:
+            rch = [rows[k:k + RPP] for k in range(0, len(rows), RPP)]
+            print_sheets = [[_print_list_draw(rc, pdata, thumbs, title, width, last=(k == len(rch) - 1))]
+                            for k, rc in enumerate(rch)]
+        nb = sum(len(g["members"]) for g in groups if g.get("bought"))
+        tip_list = [tips] if isinstance(tips, str) else list(tips or [])
+        sections = [
+            {"title": "Overview", "blurb": "The finished assembly from every side, with its overall size.",
+             "sheets": [[named.get("views")]]},
+            {"title": "Parts and tools", "blurb": "Every part with its letter, quantity and size%s%s." % (
+                "; what to buy" if nb or h_items else "", "; the tools you need" if t_items else ""),
+             "sheets": part_sheets},
+            {"title": "Printing", "blurb": "Orientation, supports and weight of each printed part.",
+             "sheets": print_sheets},
+            {"title": "Assembly", "blurb": "%d step%s. New parts are pulled out along the way they go in." % (
+                len(step_imgs), "" if len(step_imgs) == 1 else "s"),
+             "sheets": [step_imgs[k:k + 2] for k in range(0, len(step_imgs), 2)]},
+            {"title": "Inside view", "blurb": "Quarter cutaway and a straight section through the assembly.",
+             "sheets": [[named.get("cutaway")]]},
+        ]
+        if tip_list:
+            sections.append({"title": "Good to know", "blurb": "Tips for building, using and taking it apart.",
+                             "sheets": [[_tips_page(tip_list, title, width)]]})
+        for sec in sections:
+            sec["sheets"] = [[i for i in sh if i is not None] for sh in sec["sheets"]]
+            sec["sheets"] = [sh for sh in sec["sheets"] if sh]
+        sections = [sec for sec in sections if sec["sheets"]]
+        facts = [("Overall size", "%s x %s x %s mm" % (_r(allb.XLength, 0), _r(allb.YLength, 0), _r(allb.ZLength, 0))),
+                 ("Printed parts", str(len(insts) - nb))]
+        if nb or h_items:
+            facts.append(("Bought parts", str(nb + sum(q for _n, q in h_items))))
+        facts.append(("Assembly steps", str(len(step_imgs))))
+        n = _write_manual(pdf, title, {"subtitle": subtitle, "hero": hero_img, "facts": facts,
+                                          "save": os.path.join(folder, prefix)}, sections)
+        files += [os.path.join(folder, prefix + "_cover.png"), os.path.join(folder, prefix + "_contents.png"), pdf]
+        lines.append("manual: %s (%d A4 pages: cover, contents, %s)" % (
+            os.path.basename(pdf), n, ", ".join(sec["title"].lower() for sec in sections)))
         pages.insert(2, ("print list", img))
     out = ["%s: illustrations of %d part(s) -> %s" % (d.Name, len(insts), folder)]
     out += lines
@@ -1030,20 +1079,29 @@ def _print_list_page(groups, order, insts, thumbs, title, width):
         colour = "any" if g.get("auto") else (_colour_name(g["rgb"]) or "as shown")
         rows.append((gi, g["letter"], g["label"], q, colour, g["rgb"], how, "supports" if sup >= 1 else "no supports",
                      _dims(sh), grams))
-    row_h = 74
-    H = int(60 + 40 + 34 + len(rows) * row_h + 150)
-    img, p = _canvas(width, H)
-    _header(p, width, title, "print list")
     settings = "%s, nozzle %s mm, layer %s mm, %s" % (pf.get("printer") or "printer", fmt(pf.get("nozzle", 0.4)),
                                                      fmt(pf.get("layer", 0.2)), mat)
-    _text(p, 24, 56, width - 48, 30, settings, 15, False, (90, 90, 95))
+    pdata = {"rows": rows, "total": total, "mat": mat, "settings": settings}
+    img = _print_list_draw(rows, pdata, thumbs, title, width)
+    plines = ["print list: %d unique part(s), ~%s g %s; %d need supports" % (
+        len(rows), _r(total, 0), mat, sum(1 for r in rows if r[7] == "supports"))]
+    return img, plines, pdata
+
+
+def _print_list_draw(rows, pdata, thumbs, title, width, last=True):
+    """One print-list sheet for `rows`; the totals and tips go on the last sheet."""
+    from PySide import QtGui, QtCore
+    row_h = 74
+    H = int(60 + 40 + 34 + len(rows) * row_h + (150 if last else 20))
+    img, p = _canvas(width, H)
+    _header(p, width, title, "print list")
+    _text(p, 24, 56, width - 48, 30, pdata["settings"], 15, False, (90, 90, 95))
     cols = [(24, 90, "part"), (114, 230, "name"), (344, 50, "qty"), (394, 120, "colour"), (514, 300, "orientation"),
             (814, 170, "size / weight")]
     y = 100
     for x, w, hd in cols:
         _text(p, x * width / 1000.0, y, w * width / 1000.0, 28, hd, 14, True, (110, 110, 115))
     y += 34
-    from PySide import QtGui, QtCore
     for k, (gi, letter, label, q, colour, rgb, how, sup, dims, grams) in enumerate(rows):
         yy = y + k * row_h
         if k % 2 == 0:
@@ -1066,20 +1124,97 @@ def _print_list_page(groups, order, insts, thumbs, title, width):
         _text(p, 814 * sx, yy + 6, 170 * sx, row_h / 2, dims, 13, False, (70, 70, 75))
         _text(p, 814 * sx, yy + row_h / 2, 170 * sx, row_h / 2 - 6, "%s g%s" % (_r(grams, 0), " total" if q > 1 else ""),
               13, False, (70, 70, 75))
-    yy = y + len(rows) * row_h + 16
-    _text(p, 24, yy, width - 48, 30, "total about %s g of %s (solid parts; less with sparse infill)" % (
-        _r(total, 0), mat), 15, True, (50, 50, 55))
-    tips = ("Orientation is the one that needs the least support material. Print fit tests first if the clearances "
-            "are new; press-fit parts should go together by hand or with a soft mallet.")
-    _text(p, 24, yy + 34, width - 48, 80, tips, 14, False, (100, 100, 105), wrap=True)
+    if last:
+        yy = y + len(rows) * row_h + 16
+        _text(p, 24, yy, width - 48, 30, "total about %s g of %s (solid parts; less with sparse infill)" % (
+            _r(pdata["total"], 0), pdata["mat"]), 15, True, (50, 50, 55))
+        tips = ("Orientation is the one that needs the least support material. Print fit tests first if the "
+                "clearances are new; press-fit parts should go together by hand or with a soft mallet.")
+        _text(p, 24, yy + 34, width - 48, 80, tips, 14, False, (100, 100, 105), wrap=True)
     p.end()
-    plines = ["print list: %d unique part(s), ~%s g %s; %d need supports" % (
-        len(rows), _r(total, 0), mat, sum(1 for r in rows if r[7] == "supports"))]
-    return img, plines
+    return img
 
 
-def _write_manual(path, title, front, steps, back):
-    """A4 PDF: cover (views), parts + tools, print list, steps two per page, cutaway."""
+def _tips_page(tips, title, width):
+    from PySide import QtGui, QtCore
+    fm = QtGui.QFontMetricsF(_font(17, False))
+    hs = [max(30.0, fm.boundingRect(QtCore.QRectF(0, 0, width - 100, 10000), int(QtCore.Qt.TextWordWrap), t).height() + 10)
+          for t in tips]
+    img, p = _canvas(width, int(70 + sum(hs) + 12 * len(hs) + 20))
+    _header(p, width, title, "good to know")
+    y = 70
+    for t, h in zip(tips, hs):
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QBrush(QtGui.QColor(200, 60, 30)))
+        p.drawEllipse(QtCore.QRectF(32, y + 10, 9, 9))
+        _text(p, 56, y, width - 100, h, t, 17, False, (55, 55, 60), wrap=True)
+        y += h + 12
+    p.end()
+    return img
+
+
+def _cover_page(W, H, title, meta, date):
+    from PySide import QtGui, QtCore
+    img, p = _canvas(W, H)
+    m = int(W * 0.08)
+    p.setPen(QtCore.Qt.NoPen)
+    p.setBrush(QtGui.QBrush(QtGui.QColor(30, 30, 35)))
+    p.drawRect(QtCore.QRectF(0, 0, W, 16))
+    p.setBrush(QtGui.QBrush(QtGui.QColor(200, 60, 30)))
+    p.drawRect(QtCore.QRectF(m, 150, 70, 8))
+    _text(p, m, 172, W - 2 * m, 40, "ASSEMBLY MANUAL", 24, True, (120, 120, 125))
+    fm = QtGui.QFontMetricsF(_font(78, True))
+    th = fm.boundingRect(QtCore.QRectF(0, 0, W - 2 * m, 10000), int(QtCore.Qt.TextWordWrap), title).height()
+    _text(p, m, 222, W - 2 * m, th + 10, title, 78, True, (25, 25, 30), wrap=True)
+    y = 222 + th + 22
+    if meta.get("subtitle"):
+        _text(p, m, y, W - 2 * m, 80, meta["subtitle"], 28, False, (90, 90, 95), wrap=True)
+        y += 90
+    fy = H - 330
+    if meta.get("hero") is not None:
+        _place(p, meta["hero"], m, y + 10, W - 2 * m, fy - y - 40, upscale=4)
+    facts = meta.get("facts") or []
+    p.setPen(QtGui.QPen(QtGui.QColor(215, 215, 220), 2))
+    p.drawLine(QtCore.QPointF(m, fy), QtCore.QPointF(W - m, fy))
+    if facts:
+        fm = QtGui.QFontMetricsF(_font(30, True))      # columns as wide as their text needs
+        need = [max(fm.horizontalAdvance(val), 150.0) + 40 for _lab, val in facts]
+        k_w = min(1.0, (W - 2 * m) / sum(need))
+        spare = (W - 2 * m - sum(need) * k_w) / len(facts)
+        x = m
+        for (lab, val), nw in zip(facts, need):
+            cw = nw * k_w + spare
+            _text(p, x, fy + 24, cw - 10, 30, lab.upper(), 16, True, (140, 140, 145))
+            _text(p, x, fy + 56, cw - 10, 50, val, 30 if k_w >= 1.0 else 30 * k_w, True, (35, 35, 40))
+            x += cw
+    _text(p, m, H - 110, W - 2 * m, 30, date, 18, False, (140, 140, 145))
+    _text(p, m, H - 110, W - 2 * m, 30, "Generated from the FreeCAD model", 18, False, (140, 140, 145), "right")
+    p.end()
+    return img
+
+
+def _contents_page(W, H, title, entries):
+    """entries: [(number, section title, blurb, first page)]"""
+    from PySide import QtGui, QtCore
+    img, p = _canvas(W, H)
+    m = int(W * 0.08)
+    _text(p, m, 120, W - 2 * m, 70, "Contents", 54, True, (25, 25, 30))
+    y = 250
+    for num, name, blurb, page in entries:
+        _text(p, m, y, 70, 44, str(num), 34, True, (200, 60, 30))
+        _text(p, m + 80, y, W - 2 * m - 190, 44, name, 30, True, (35, 35, 40))
+        _text(p, W - m - 100, y, 100, 44, str(page), 30, True, (35, 35, 40), "right")
+        _text(p, m + 80, y + 46, W - 2 * m - 190, 56, blurb, 18, False, (120, 120, 125), wrap=True)
+        p.setPen(QtGui.QPen(QtGui.QColor(225, 225, 228), 2))
+        p.drawLine(QtCore.QPointF(m, y + 116), QtCore.QPointF(W - m, y + 116))
+        y += 140
+    p.end()
+    return img
+
+
+def _write_manual(path, title, meta, sections):
+    """A4 PDF manual: cover, table of contents, then numbered sections with running headers and page numbers.
+    sections = [{"title", "blurb", "sheets": [[image, ...] per page]}]. Returns the page count."""
     from PySide import QtCore
     prev = None
 
@@ -1091,7 +1226,7 @@ def _write_manual(path, title, front, steps, back):
     except Exception:
         prev = None
     try:
-        return _write_manual_pdf(path, title, front, steps, back)
+        return _write_manual_pdf(path, title, meta, sections)
     finally:
         try:
             QtCore.qInstallMessageHandler(prev)
@@ -1099,7 +1234,7 @@ def _write_manual(path, title, front, steps, back):
             pass
 
 
-def _write_manual_pdf(path, title, front, steps, back):
+def _write_manual_pdf(path, title, meta, sections):
     from PySide import QtGui, QtCore
     w = QtGui.QPdfWriter(path)
     try:
@@ -1112,10 +1247,6 @@ def _write_manual_pdf(path, title, front, steps, back):
     except Exception:
         pass
     w.setTitle(title)
-    sheets = [[i] for i in front if i is not None]
-    for k in range(0, len(steps), 2):
-        sheets.append(steps[k:k + 2])
-    sheets += [[i] for i in back if i is not None]
     p = QtGui.QPainter(w)
     p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
     p.setRenderHint(QtGui.QPainter.Antialiasing, True)
@@ -1128,25 +1259,49 @@ def _write_manual_pdf(path, title, front, steps, back):
     if W < 100 or H < 100:
         W, H = 1240, 1754
     m = int(W * 0.06)
-    for n, imgs in enumerate(sheets):
-        if n:
+    # page numbers: 1 = cover, 2 = contents, sections follow
+    entries, page = [], 3
+    for k, sec in enumerate(sections):
+        entries.append((k + 1, sec["title"], sec.get("blurb", ""), page))
+        page += len(sec["sheets"])
+    total = page - 1
+    full = QtCore.QRectF(0, 0, W, H)
+    # everything is drawn into images first: text painted straight onto QPdfWriter floods the log with warnings
+    cover = _cover_page(1240, 1754, title, meta, time.strftime("%d %B %Y"))
+    contents = _contents_page(1240, 1754, title, entries)
+    if meta.get("save"):            # also as PNGs, next to the other pages
+        cover.save(meta["save"] + "_cover.png", "PNG")
+        contents.save(meta["save"] + "_contents.png", "PNG")
+    p.drawImage(full, cover)
+    w.newPage()
+    p.drawImage(full, contents)
+    n = 2
+    for (num, name, _b, _pg), sec in zip(entries, sections):
+        for imgs in sec["sheets"]:
             w.newPage()
-        y = m
-        avail = H - 2 * m - 40
-        each = (avail - (len(imgs) - 1) * 30) / float(len(imgs))
-        for im in imgs:
-            k = min((W - 2 * m) / float(im.width()), each / float(im.height()))
-            dw, dh = im.width() * k, im.height() * k
-            p.drawImage(QtCore.QRectF(m + (W - 2 * m - dw) / 2, y, dw, dh), im)
-            y += dh + 30
-        # footer drawn into an image: text painted straight onto QPdfWriter floods the log with metric warnings
-        fi, fp = _canvas(W - 2 * m, 30)
-        _text(fp, 0, 0, W - 2 * m, 30, "%s  -  %d / %d" % (title, n + 1, len(sheets)), 18, False, (150, 150, 155),
-              "right")
-        fp.end()
-        p.drawImage(QtCore.QRectF(m, H - m, W - 2 * m, 30), fi)
+            n += 1
+            hi, hp = _canvas(W - 2 * m, 44)
+            _text(hp, 0, 0, 60, 36, str(num), 24, True, (200, 60, 30))
+            _text(hp, 34, 0, W - 2 * m - 34, 36, name, 22, True, (45, 45, 50))
+            _text(hp, 0, 0, W - 2 * m, 36, title, 18, False, (150, 150, 155), "right")
+            hp.setPen(QtGui.QPen(QtGui.QColor(215, 215, 220), 2))
+            hp.drawLine(QtCore.QPointF(0, 42), QtCore.QPointF(W - 2 * m, 42))
+            hp.end()
+            p.drawImage(QtCore.QRectF(m, m * 0.55, W - 2 * m, 44), hi)
+            y = m * 0.55 + 44 + 24
+            avail = H - y - m - 20
+            each = (avail - (len(imgs) - 1) * 30) / float(len(imgs))
+            for im in imgs:
+                k = min((W - 2 * m) / float(im.width()), each / float(im.height()))
+                dw, dh = im.width() * k, im.height() * k
+                p.drawImage(QtCore.QRectF(m + (W - 2 * m - dw) / 2, y, dw, dh), im)
+                y += dh + 30
+            fi, fp = _canvas(W - 2 * m, 30)
+            _text(fp, 0, 0, W - 2 * m, 30, "%d / %d" % (n, total), 18, False, (150, 150, 155), "right")
+            fp.end()
+            p.drawImage(QtCore.QRectF(m, H - m, W - 2 * m, 30), fi)
     p.end()
-    return len(sheets)
+    return n
 
 
 # ------------------------------------------------------------------ pages
@@ -1172,7 +1327,7 @@ def _parts_page(groups, order, insts, thumbs, tools, hardware, title, width):
             ex_h += 44 + int(math.ceil(len(items) / float(per))) * (icon + 40)
     H = int(60 + 34 + rows * (th + 14) + ex_h + 20)
     img, p = _canvas(width, H)
-    nb = sum(len(groups[gi]["members"]) for gi in order if groups[gi].get("bought"))
+    nb = sum(len(g["members"]) for g in groups if g.get("bought"))
     _header(p, width, title, "%d parts to print%s" % (len(insts) - nb, ", %d to buy" % nb if nb else ""))
     y = 60
     _text(p, 24, y, 400, 30, "Parts" if nb else "Printed parts", 19, True, (70, 70, 75))
@@ -1310,18 +1465,29 @@ def _step_page(sc, num, total, st, placed, insts, groups, feats, thumbs, vdef, d
     cw, ch = 118, 112
     cx, cy = 130, 14
     nbox = len(by_g)
-    _box(p, cx, cy, nbox * (cw + 8) + 8, ch + 16, (255, 252, 235), (200, 180, 120), 8, 2)
+    avail = width - cx - 150            # up to the page counter
+    per = max(1, int((avail - 8) // (cw + 8)))
+    if nbox > per:                      # many kinds of part in one step: smaller tiles, wrapped into rows
+        cw, ch = 72, 70
+        per = max(1, int((avail - 8) // (cw + 8)))
+    crows = int(math.ceil(nbox / float(per)))
+    _box(p, cx, cy, min(nbox, per) * (cw + 8) + 8, crows * (ch + 8) + 8, (255, 252, 235), (200, 180, 120), 8, 2)
     for k, (gi, ids) in enumerate(by_g.items()):
-        x = cx + 8 + k * (cw + 8)
-        _place(p, thumbs.get(gi), x + 4, cy + 22, cw - 8, ch - 26)
-        _text(p, x, cy + 4, cw, 22, "%dx" % len(ids), 18, True, (200, 60, 30) if len(ids) > 1 else (60, 60, 65), "right")
-        _bubble(p, x + 13, cy + 17, 11, groups[gi]["letter"], (45, 45, 50))
+        x = cx + 8 + (k % per) * (cw + 8)
+        yb = cy + (k // per) * (ch + 8)
+        _place(p, thumbs.get(gi), x + 4, yb + 22, cw - 8, ch - 26)
+        _text(p, x, yb + 4, cw, 22, "%dx" % len(ids), 18 if cw > 100 else 14, True,
+              (200, 60, 30) if len(ids) > 1 else (60, 60, 65), "right")
+        _bubble(p, x + 13, yb + 17, 11, groups[gi]["letter"], (45, 45, 50))
     _text(p, width - 140, 10, 120, 30, "%d / %d" % (num, total), 15, False, (150, 150, 155), "right")
-    top = cy + ch + 26
-    _place(p, shot, 20, top, width - 40, H - top - 50, upscale=2.5)
-    note = st.get("note") or desc
-    _text(p, 24, H - 46, width - 48, 40, note, 17, False, (60, 60, 65), wrap=True)
     from PySide import QtCore
+    top = cy + crows * (ch + 8) + 18
+    note = st.get("note") or desc
+    fm = QtGui.QFontMetricsF(_font(17, False))      # a long note gets the lines it needs
+    need = fm.boundingRect(QtCore.QRectF(0, 0, width - 48, 10000), int(QtCore.Qt.TextWordWrap), note).height()
+    note_h = max(40.0, min(need + 8, H * 0.3))
+    _place(p, shot, 20, top, width - 40, H - top - note_h - 10, upscale=2.5)
+    _text(p, 24, H - note_h - 6, width - 48, note_h, note, 17, False, (60, 60, 65), wrap=True)
     p.setPen(QtGui.QColor(225, 225, 228))
     p.setBrush(QtCore.Qt.NoBrush)
     p.drawRect(0, 0, width - 1, H - 1)

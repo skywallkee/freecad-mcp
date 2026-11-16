@@ -73,7 +73,9 @@ the `references/` files hold the detail - read one when the task enters its area
 - **Bring in**: `freecad_mesh_import` (repair a downloaded/scanned STL, find its holes, make it a solid),
   `freecad_compare_mesh` (how close a model is to a reference mesh).
 - **Show**: `freecad_view` (quick check), `freecad_render` (presentation image), `freecad_illustrate`
-  (parts list, LEGO-style steps, views, cutaway, PDF manual), `freecad_drawing` (dimensioned PDF).
+  (parts list, LEGO-style steps, views, cutaway; asked for illustrations or instructions -> always the full
+  PDF manual with cover and contents, see the workflow in `references/docs-output.md`), `freecad_drawing`
+  (dimensioned PDF).
 
 ## Gates before calling something done
 - Geometry valid (`freecad_check_geometry`, or the INVALID flag in summaries) and one solid per printed part.

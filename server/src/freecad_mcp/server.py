@@ -500,7 +500,8 @@ async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cu
                              title: str | None = None, view: str = "iso", views: list[str] | None = None,
                              cut: Literal["x", "y", "z"] | None = None, at: float | None = None,
                              width: int = 1000, out_dir: str | None = None, preview: bool = True,
-                             preview_width: int = 1000, bought: list[str] | None = None, doc: str | None = None):
+                             preview_width: int = 1000, bought: list[str] | None = None, subtitle: str | None = None,
+                             tips: list[str] | None = None, doc: str | None = None):
     """Assembly/usage illustration pages (PNG) rendered from the model in a scratch doc (yours untouched):
     parts = printed parts grouped by identical shape with letters A, B.. + quantity + size, plus
     `hardware` (["4x M3x10 screw", "2x M3 heat-set insert", "magnet 6x3"]) and `tools`
@@ -513,14 +514,18 @@ async def freecad_illustrate(kind: Literal["all", "parts", "steps", "views", "cu
     views = hero iso + back/front/right/top (views=[...] to change), with overall size;
     cutaway = quarter cut from the main view + straight section (cut axis x/y/z at `at`, default centre).
     manual = all of the above + a print list (per part: colour, quantity, least-support orientation, size, grams;
-    printer settings) bound into one A4 PDF <title>_manual.pdf.
+    printer settings) bound into one A4 PDF <title>_manual.pdf: cover (title, `subtitle`, hero view, key facts),
+    table of contents, numbered sections (overview, parts and tools, printing, assembly, inside view) with
+    running headers and page numbers, and a "Good to know" page from `tips` (["No screws: every joint clicks", ...]).
+    This is the default deliverable when the user asks for instructions / illustrations / a manual.
     view: iso iso_left iso_back iso_back_right iso_below.. front back left right top bottom or dir:x,y,z.
     bought = modelled parts that are purchased, not printed (O-ring, lens, bearing): shown in the parts list
     as "buy", left out of the print list. With explicit steps, `base` is shown in place from step 1.
     Files go to <project>/images (or out_dir); returns paths, the step list and one preview image."""
     return _out(await _call("illustrate", 900, kind=kind, objects=objects, steps=steps, base=base, tools=tools,
                             hardware=hardware, title=title, view=view, views=views, cut=cut, at=at, width=width,
-                            out_dir=out_dir, preview=preview, preview_width=preview_width, bought=bought, doc=doc))
+                            out_dir=out_dir, preview=preview, preview_width=preview_width, bought=bought, subtitle=subtitle,
+                            tips=tips, doc=doc))
 
 
 @mcp.tool()
