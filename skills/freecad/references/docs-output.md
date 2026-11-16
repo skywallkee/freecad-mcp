@@ -9,8 +9,12 @@
 - `kind="parts"`: printed parts grouped by identical shape, lettered, with quantity and size, plus `hardware`
   (e.g. ["4x M3x8 screw", "4x M3 heat-set insert"]) and `tools` (["soldering iron", "2.5 mm hex key"]) as icons.
   Pass the real hardware and tools the design needs - the tool doesn't infer them.
+  Parts that are modelled but purchased (O-ring, lens, bearing, LED strip) go in `bought=["O_ring", ...]`:
+  they show as "buy" in the parts list and stay out of the print list.
 - `kind="steps"`: LEGO-style pages; the order and insertion directions are planned automatically (parts that
   can't go in straight are reported), or give `steps=[{"add": [...], "dir": "-z", "note": "..."}]`.
+  With your own steps, name the part everything is built on as `base`: it is shown in place from step 1.
+  Use them when the real order differs from "slides straight in" (press fits, snap fits, sub-assemblies).
 - `kind="views"`, `kind="cutaway"` (quarter cut + section).
 - `kind="manual"`: all of the above + a print list (colour, quantity, least-support orientation, grams) as one
   A4 PDF. Files go to the project's `images/` folder unless `out_dir` is given.
