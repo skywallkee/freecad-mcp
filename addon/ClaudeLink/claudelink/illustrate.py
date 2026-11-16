@@ -738,7 +738,7 @@ def _parse_items(items, default_qty=1):
 
 def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hardware=None, title=None,
                view="iso", views=None, cut=None, at=None, width=1000, out_dir=None, doc=None, preview=True,
-               preview_width=1000):
+               preview_width=1000, bought=None):
     """Render assembly / usage illustrations of an assembly (see the MCP tool for the parameters)."""
     if not FreeCAD.GuiUp:
         raise UserError("illustrate needs the FreeCAD GUI (this is a headless instance)")
@@ -807,6 +807,13 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
         g["rgb"] = rgb
         for m in g["members"]:
             insts[m]["rgb"] = rgb
+    # modelled parts that are bought, not printed (O-ring, lens, LED strip, bearing ...)
+    bset = set([bought] if isinstance(bought, str) else (bought or []))
+    unknown = [b for b in bset if not any(it["obj"] == b or it["label"] == b for it in insts)]
+    if unknown:
+        raise UserError("bought: unknown part(s) %s" % ", ".join(sorted(unknown)))
+    for g in groups:
+        g["bought"] = any(insts[m]["obj"] in bset or insts[m]["label"] in bset for m in g["members"])
     allb = FreeCAD.BoundBox()
     for it in insts:
         allb.add(it["shape"].BoundBox)
@@ -839,6 +846,12 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                             warns.append("step %d: %s can't go in straight - no arrow" % (si + 1, insts[i]["obj"]))
                 plan.append({"add": ids, "dirs": dirs, "note": st.get("note"), "view": st.get("view")})
                 placed += ids
+            bnames = [base] if isinstance(base, str) else list(base or [])
+            bids = [i for i, it in enumerate(insts) if i not in placed and (it["obj"] in bnames or it["label"] in bnames)]
+            if bids and plan:   # the base is already in place in step 1, as in the automatic plan
+                plan[0]["add"] = bids + plan[0]["add"]
+                plan[0]["dirs"].update({i: None for i in bids})
+                placed += bids
             left = [it["obj"] for i, it in enumerate(insts) if i not in placed]
             if left:
                 warns.append("not in any step: " + ", ".join(sorted(set(left))))
@@ -896,8 +909,10 @@ def illustrate(kind="all", objects=None, steps=None, base=None, tools=None, hard
                                   title, width)
                 save(img, prefix + "_parts.png")
                 pages.append(("parts", img))
-                lines.append("parts: %d printed (%d unique)%s%s" % (
-                    len(insts), len(groups),
+                nb = sum(len(g["members"]) for g in groups if g.get("bought"))
+                lines.append("parts: %d printed (%d unique)%s%s%s" % (
+                    len(insts) - nb, len([g for g in groups if not g.get("bought")]),
+                    ", %d bought" % nb if nb else "",
                     ", hardware: " + ", ".join("%dx %s" % (q, n) for n, q in _parse_items(hardware)) if hardware else "",
                     ", tools: " + ", ".join(n for n, _ in _parse_items(tools)) if tools else ""))
             # ---------------- steps
@@ -998,6 +1013,8 @@ def _print_list_page(groups, order, insts, thumbs, title, width):
     total = 0.0
     for gi in order:
         g = groups[gi]
+        if g.get("bought"):
+            continue
         sh = insts[g["members"][0]]["shape"]
         q = len(g["members"])
         if g["label"] == "pin":
@@ -1155,9 +1172,10 @@ def _parts_page(groups, order, insts, thumbs, tools, hardware, title, width):
             ex_h += 44 + int(math.ceil(len(items) / float(per))) * (icon + 40)
     H = int(60 + 34 + rows * (th + 14) + ex_h + 20)
     img, p = _canvas(width, H)
-    _header(p, width, title, "%d parts to print" % len(insts))
+    nb = sum(len(groups[gi]["members"]) for gi in order if groups[gi].get("bought"))
+    _header(p, width, title, "%d parts to print%s" % (len(insts) - nb, ", %d to buy" % nb if nb else ""))
     y = 60
-    _text(p, 24, y, 400, 30, "Printed parts", 19, True, (70, 70, 75))
+    _text(p, 24, y, 400, 30, "Parts" if nb else "Printed parts", 19, True, (70, 70, 75))
     y += 34
     for k, gi in enumerate(order):
         g = groups[gi]
@@ -1170,7 +1188,10 @@ def _parts_page(groups, order, insts, thumbs, tools, hardware, title, width):
         _text(p, x + 42, yy + 6, tw - 52, 32, "%dx" % q, 22, True, (200, 60, 30) if q > 1 else (60, 60, 65), "right")
         sh = insts[g["members"][0]]["shape"]
         _text(p, x + 10, yy + th - 48, tw - 20, 24, g["label"], 15, True, (50, 50, 55), "center")
-        _text(p, x + 10, yy + th - 26, tw - 20, 20, _dims(sh), 12, False, (120, 120, 125), "center")
+        if g.get("bought"):
+            _text(p, x + 10, yy + th - 26, tw - 20, 20, "buy - " + _dims(sh), 12, True, (30, 110, 170), "center")
+        else:
+            _text(p, x + 10, yy + th - 26, tw - 20, 20, _dims(sh), 12, False, (120, 120, 125), "center")
     y += rows * (th + 14)
     for head, items, table in extra:
         if not items:
